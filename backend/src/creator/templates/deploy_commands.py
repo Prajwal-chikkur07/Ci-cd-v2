@@ -22,6 +22,9 @@ def get_deploy_command(deploy_target: Optional[str], has_dockerfile: bool, fallb
     elif has_dockerfile:
         return "docker build -t app . && docker push app"
     elif fallback_cmd:
+        # If the fallback backgrounds a server, add a wait so we confirm it starts
+        if fallback_cmd.rstrip().endswith("&"):
+            return f"{fallback_cmd} sleep 2 && echo 'Server started in background'"
         return fallback_cmd
     else:
         return "echo 'Deploy: package application for distribution'"
@@ -32,12 +35,22 @@ def get_health_check_command(deploy_target: Optional[str], default_port: int = 8
 
     Uses -s -o /dev/null -w '%{http_code}' to accept any HTTP response (even 404)
     as proof the service is running. Only fails if the service is unreachable.
+
+    The STAGE_DEPLOY_DEPLOY_URL env var is set automatically by inter-stage
+    communication when the deploy stage detects or assigns a dynamic port.
     """
     if deploy_target in ("kubernetes", "k8s"):
         return "kubectl get pods -l app=app --field-selector=status.phase=Running | grep -q Running"
     elif deploy_target == "heroku":
         return "curl -s -o /dev/null -w '%{http_code}' https://$(heroku apps:info -s | grep web_url | cut -d= -f2) | grep -qE '^[2-5]' || true"
     elif deploy_target == "aws":
-        return f"curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{{http_code}}' http://localhost:{default_port}/ | grep -qE '^[2-5]'"
+        return (
+            f"HEALTH_URL=${{STAGE_DEPLOY_DEPLOY_URL:-http://localhost:{default_port}}} && "
+            "curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{http_code}' $HEALTH_URL/ | grep -qE '^[2-5]'"
+        )
     else:
-        return f"sleep 2 && curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{{http_code}}' http://localhost:{default_port}/ | grep -qE '^[2-5]' && echo 'Health check: service is responding'"
+        return (
+            f"HEALTH_URL=${{STAGE_DEPLOY_DEPLOY_URL:-http://localhost:{default_port}}} && "
+            "sleep 2 && curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{http_code}' $HEALTH_URL/ | grep -qE '^[2-5]' && "
+            "echo \"Health check: service is responding at $HEALTH_URL\""
+        )

@@ -24,6 +24,7 @@ interface PipelineState {
   isEditing: boolean;
   executionLogs: LogEntry[];
   activeExecutions: Map<string, ActiveExecution>;
+  deployUrl: string | null;
 }
 
 interface PipelineActions {
@@ -53,6 +54,7 @@ interface PipelineActions {
   setExecutionRecoveryPlan: (pipelineId: string, stageId: string, plan: { strategy: string; reason: string; modified_command?: string }) => void;
   setExecutionBulkResults: (pipelineId: string, results: Record<string, StageResult>) => void;
   switchToExecution: (pipelineId: string) => void;
+  setDeployUrl: (url: string | null) => void;
 }
 
 const PipelineContext = createContext<(PipelineState & PipelineActions) | null>(null);
@@ -69,6 +71,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
   const [isEditing, setIsEditing] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<LogEntry[]>([]);
   const [activeExecutions, setActiveExecutions] = useState<Map<string, ActiveExecution>>(new Map());
+  const [deployUrl, setDeployUrl] = useState<string | null>(null);
 
   // Load history from the backend on mount
   useEffect(() => {
@@ -92,6 +95,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setIsRegenerating(false);
     setIsEditing(false);
     setExecutionLogs([]);
+    setDeployUrl(null);
   }, []);
 
   const clearPipeline = useCallback(() => {
@@ -103,6 +107,9 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setRecoveryPlans(new Map());
     setIsRegenerating(false);
     setIsEditing(false);
+    setDeployUrl(null);
+    setExecutionLogs([]);
+    setActiveExecutions(new Map());
   }, []);
 
   const updateStageStatus = useCallback((stageId: string, status: StageStatus) => {
@@ -321,6 +328,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     isEditing,
     executionLogs,
     activeExecutions,
+    deployUrl,
     setPipeline,
     clearPipeline,
     updateStageStatus,
@@ -346,6 +354,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setExecutionRecoveryPlan,
     setExecutionBulkResults,
     switchToExecution,
+    setDeployUrl,
   };
 
   return (

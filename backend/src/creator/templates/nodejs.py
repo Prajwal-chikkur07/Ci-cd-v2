@@ -129,7 +129,20 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     should_deploy = any(kw in goal.lower() for kw in deploy_keywords)
 
     if should_deploy:
-        deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, f"{run} run deploy")
+        # Find a free port at runtime to avoid conflicts with other running services
+        find_port = "PORT=$(node -e \"const s=require('net').createServer();s.listen(0,()=>{console.log(s.address().port);s.close()})\")"
+        # Build a sensible fallback: prefer deploy script, then start, then serve
+        if "deploy" in scripts:
+            node_fallback = f"{run} run deploy"
+        elif "start" in scripts:
+            node_fallback = f"{find_port} && PORT=$PORT {run} start &"
+        elif "serve" in scripts:
+            node_fallback = f"{find_port} && PORT=$PORT {run} run serve &"
+        elif has_build:
+            node_fallback = f"{find_port} && npx -y serve -s build -l $PORT &"
+        else:
+            node_fallback = "echo 'Deploy: no start/deploy script found — skipping'"
+        deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, node_fallback)
 
         stages.append(
             Stage(

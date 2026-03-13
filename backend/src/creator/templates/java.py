@@ -87,7 +87,7 @@ def generate_java_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     should_deploy = any(kw in goal.lower() for kw in deploy_keywords)
 
     if should_deploy:
-        java_fallback = f"{build_tool} {'bootRun' if analysis.framework == 'spring-boot' else 'exec:java'}"
+        java_fallback = f"{build_tool} {'bootRun' if analysis.framework == 'spring-boot' else 'exec:java'} &"
         deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, java_fallback)
 
         stages.append(

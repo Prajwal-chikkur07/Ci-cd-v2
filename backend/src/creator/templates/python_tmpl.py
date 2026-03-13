@@ -117,13 +117,15 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     should_deploy = any(kw in goal.lower() for kw in deploy_keywords)
 
     if should_deploy:
+        # Use a shell snippet to find a free port at runtime, avoiding conflicts
+        find_port = "PORT=$(python3 -c \"import socket; s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()\")"
         # Build a sensible fallback deploy command based on the framework
         if analysis.framework in ("fastapi", "starlette"):
-            fallback_deploy = f"{VENV_PREFIX}pip install uvicorn -q && uvicorn main:app --host 0.0.0.0 --port 8000 &"
+            fallback_deploy = f"{VENV_PREFIX}pip install uvicorn -q && {find_port} && uvicorn main:app --host 0.0.0.0 --port $PORT &"
         elif analysis.framework in ("flask",):
-            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && gunicorn -w 4 -b 0.0.0.0:8000 app:app &"
+            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && {find_port} && gunicorn -w 4 -b 0.0.0.0:$PORT app:app &"
         elif analysis.framework in ("django",):
-            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && gunicorn -w 4 -b 0.0.0.0:8000 config.wsgi:application &"
+            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && {find_port} && gunicorn -w 4 -b 0.0.0.0:$PORT config.wsgi:application &"
         else:
             fallback_deploy = "echo 'Deploy: no deploy target configured — set a target (docker, aws, heroku, k8s) in the goal'"
         deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, fallback_deploy)

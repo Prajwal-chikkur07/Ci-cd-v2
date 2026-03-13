@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Callable, Awaitable
 
 from src.executor.agents import (
@@ -10,12 +11,39 @@ from src.executor.agents import (
     VerifyAgent,
 )
 from src.executor.docker_runner import run_in_docker
+from src.executor.port_utils import (
+    detect_port_conflict,
+    extract_port_from_command,
+    find_free_port,
+    replace_port_in_command,
+)
 from src.executor.replanner import analyze_failure, execute_recovery
 from src.executor.scheduler import DAGScheduler
 from src.models.messages import StageRequest, StageResult, StageStatus
 from src.models.pipeline import AgentType, PipelineSpec
 
 logger = logging.getLogger(__name__)
+
+_PORT_PATTERNS = [
+    re.compile(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})"),
+    re.compile(r"(?:listening|running|started|serving)\s+(?:on|at)\s+(?:port\s+)?(\d{2,5})", re.IGNORECASE),
+    re.compile(r"port\s+(\d{2,5})", re.IGNORECASE),
+    re.compile(r"-p\s+(\d{2,5}):\d+"),
+]
+
+
+def extract_deploy_url(stdout: str, stderr: str, command: str = "") -> str | None:
+    """Extract a deploy URL from stage output or command by detecting port numbers."""
+    for text in (stdout, stderr, command):
+        if not text:
+            continue
+        for pattern in _PORT_PATTERNS:
+            match = pattern.search(text)
+            if match:
+                port = match.group(1)
+                return f"http://localhost:{port}"
+    return None
+
 
 AGENT_MAP = {
     AgentType.BUILD: BuildAgent,
@@ -67,9 +95,11 @@ async def _execute_stage(
     working_dir: str,
     use_docker: bool = False,
     language: str = "",
+    command_override: str | None = None,
 ) -> StageResult:
     """Execute a single stage using the appropriate agent."""
     stage = scheduler.get_stage(stage_id)
+    command = command_override or stage.command
 
     scheduler.mark_running(stage_id)
 
@@ -82,7 +112,7 @@ async def _execute_stage(
     # Docker execution path
     if use_docker:
         result = await run_in_docker(
-            command=stage.command,
+            command=command,
             work_dir=working_dir,
             language=language,
             timeout=stage.timeout_seconds,
@@ -107,7 +137,7 @@ async def _execute_stage(
 
     request = StageRequest(
         stage_id=stage_id,
-        command=stage.command,
+        command=command,
         working_dir=working_dir,
         env_vars=merged_env,
         timeout=stage.timeout_seconds,
@@ -211,14 +241,36 @@ async def run_pipeline(
                 continue
 
             if result.status == StageStatus.SUCCESS:
+                # Check if this is a deploy stage and extract the URL
+                stage_spec = scheduler.get_stage(stage_id)
+                deploy_url = None
+                if stage_spec.agent == AgentType.DEPLOY:
+                    deploy_url = extract_deploy_url(
+                        result.stdout or "", result.stderr or "", stage_spec.command
+                    )
+                    # Fallback: check health_check stage command for a port/URL
+                    if not deploy_url:
+                        for succ_id in scheduler.graph.successors(stage_id):
+                            succ_stage = scheduler.get_stage(succ_id)
+                            if succ_stage.agent == AgentType.VERIFY:
+                                deploy_url = extract_deploy_url("", "", succ_stage.command)
+                                if deploy_url:
+                                    break
+                    if deploy_url:
+                        result.metadata["deploy_url"] = deploy_url
+                        logger.info("Detected deploy URL for stage %s: %s", stage_id, deploy_url)
+
                 scheduler.mark_complete(stage_id, StageStatus.SUCCESS, result)
-                await _broadcast({
+                broadcast_data = {
                     "stage_id": stage_id,
                     "status": "success",
                     "duration_seconds": result.duration_seconds,
                     "log_type": "stage_success",
                     "log_message": f"Stage '{stage_id}' succeeded in {result.duration_seconds:.1f}s",
-                })
+                }
+                if deploy_url:
+                    broadcast_data["deploy_url"] = deploy_url
+                await _broadcast(broadcast_data)
                 continue
 
             # Stage failed — handle recovery
@@ -237,6 +289,61 @@ async def run_pipeline(
                     "log_message": f"Stage '{stage_id}' failed but is non-critical — skipped. {stderr_preview}",
                 })
                 continue
+
+            # Port conflict auto-recovery for deploy stages
+            if stage.agent == AgentType.DEPLOY and detect_port_conflict(result.stderr or ""):
+                old_port = extract_port_from_command(stage.command)
+                try:
+                    free_port = find_free_port(preferred=old_port or 8000)
+                except RuntimeError:
+                    free_port = None
+
+                if free_port and old_port:
+                    new_command = replace_port_in_command(stage.command, old_port, free_port)
+                    logger.info(
+                        "Port %d in use for stage %s, retrying on port %d",
+                        old_port, stage_id, free_port,
+                    )
+                    await _broadcast({
+                        "stage_id": stage_id,
+                        "status": "running",
+                        "log_type": "recovery_plan",
+                        "log_message": f"Port {old_port} was in use. Retrying deploy on port {free_port}.",
+                        "recovery_strategy": "FIX_AND_RETRY",
+                        "recovery_reason": f"Port {old_port} was in use. Deployed on port {free_port} instead.",
+                        "modified_command": new_command,
+                    })
+
+                    # Reset status so _execute_stage can mark_running again
+                    scheduler._statuses[stage_id] = StageStatus.PENDING
+                    retry_result = await _execute_stage(
+                        stage_id, scheduler, agents, working_dir,
+                        use_docker, language, command_override=new_command,
+                    )
+
+                    if retry_result.status == StageStatus.SUCCESS:
+                        deploy_url = f"http://localhost:{free_port}"
+                        retry_result.metadata["deploy_url"] = deploy_url
+                        # Also update the health_check stage command with new port
+                        for succ_id in scheduler.graph.successors(stage_id):
+                            succ_stage = scheduler.get_stage(succ_id)
+                            if succ_stage.agent == AgentType.VERIFY and old_port:
+                                succ_stage.command = replace_port_in_command(
+                                    succ_stage.command, old_port, free_port
+                                )
+
+                        scheduler.mark_complete(stage_id, StageStatus.SUCCESS, retry_result)
+                        await _broadcast({
+                            "stage_id": stage_id,
+                            "status": "success",
+                            "duration_seconds": retry_result.duration_seconds,
+                            "deploy_url": deploy_url,
+                            "log_type": "recovery_success",
+                            "log_message": f"Port conflict resolved. Stage '{stage_id}' succeeded on port {free_port} in {retry_result.duration_seconds:.1f}s",
+                        })
+                        continue
+                    # Port retry also failed — fall through to normal recovery
+                    result = retry_result
 
             # Check retry count
             if stage.retry_count > 0:

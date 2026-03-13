@@ -27,6 +27,7 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
     addLog,
     clearLogs,
     executionLogs,
+    setDeployUrl,
     // Parallel execution
     registerExecution,
     unregisterExecution,
@@ -44,6 +45,8 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
   const executingPipelineId = useRef<string | null>(null);
   // Collect logs in a ref so they're always available for history
   const collectedLogsRef = useRef<LogEntry[]>([]);
+  // Track whether WS already finalized execution (pipeline_done received before HTTP response)
+  const wsFinalizedRef = useRef(false);
 
   const onWsUpdate = useCallback((update: StageUpdate) => {
     const pid = executingPipelineId.current;
@@ -58,6 +61,9 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
         reason: update.recovery_reason ?? '',
         modified_command: update.modified_command,
       });
+    }
+    if (update.deploy_url) {
+      setDeployUrl(update.deploy_url);
     }
     if (update.log_type && update.log_message) {
       const logEntry = {
@@ -76,6 +82,18 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
       }
     }
 
+    // When pipeline_done arrives via WS, stop execution immediately
+    // This ensures the UI updates even if the HTTP response is slow
+    if (update.log_type === 'pipeline_done') {
+      wsFinalizedRef.current = true;
+      setWsActive(false);
+      stopExecution();
+      if (pid) {
+        unregisterExecution(pid);
+      }
+      executingPipelineId.current = null;
+    }
+
     // Update parallel execution tracker
     if (pid) {
       if (update.stage_id) {
@@ -89,7 +107,7 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
         });
       }
     }
-  }, [updateStageStatus, setRecoveryPlan, addLog, addExecutionLog, updateExecutionStageStatus, setExecutionRecoveryPlan]);
+  }, [updateStageStatus, setRecoveryPlan, addLog, setDeployUrl, stopExecution, unregisterExecution, addExecutionLog, updateExecutionStageStatus, setExecutionRecoveryPlan]);
 
   useWebSocket(wsActive ? pipelineIdForWs : null, onWsUpdate);
 
@@ -106,6 +124,7 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
 
     const pid = currentPipeline.pipeline_id;
     executingPipelineId.current = pid;
+    wsFinalizedRef.current = false;
 
     // Reset all statuses to pending
     for (const stage of currentPipeline.stages) {
@@ -124,23 +143,32 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
 
     const results = await execute(pid);
 
-    setWsActive(false);
-    stopExecution();
-    executingPipelineId.current = null;
-
-    // Unregister from active executions
-    unregisterExecution(pid);
+    // Only clean up if WS pipeline_done hasn't already done it
+    if (!wsFinalizedRef.current) {
+      setWsActive(false);
+      stopExecution();
+      executingPipelineId.current = null;
+      unregisterExecution(pid);
+    }
 
     if (results) {
       setBulkResults(results);
       setExecutionBulkResults(pid, results);
       const hasFailed = Object.values(results).some((r) => r.status === 'failed');
-      // Pass collected logs explicitly so they're captured reliably
       addToHistory({
         pipeline: currentPipeline,
         results,
         completedAt: new Date().toISOString(),
         overallStatus: hasFailed ? 'failed' : 'success',
+        logs: collectedLogsRef.current,
+      });
+    } else if (wsFinalizedRef.current) {
+      // HTTP failed but WS completed — add history from WS-collected logs
+      addToHistory({
+        pipeline: currentPipeline,
+        results: null,
+        completedAt: new Date().toISOString(),
+        overallStatus: 'failed',
         logs: collectedLogsRef.current,
       });
     }

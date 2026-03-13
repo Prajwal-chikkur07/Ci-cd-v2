@@ -97,14 +97,16 @@ function AppContent() {
   if (isRegenerating && currentPipeline) {
     return (
       <Layout>
-        <CreatePipeline
-          prefill={{
-            repoUrl: currentPipeline.repo_url,
-            goal: currentPipeline.goal,
-            name: currentPipeline.name,
-            useDocker: false,
-          }}
-        />
+        <div className="h-full overflow-y-auto">
+          <CreatePipeline
+            prefill={{
+              repoUrl: currentPipeline.repo_url,
+              goal: currentPipeline.goal,
+              name: currentPipeline.name,
+              useDocker: false,
+            }}
+          />
+        </div>
       </Layout>
     );
   }
@@ -113,7 +115,9 @@ function AppContent() {
   if (isEditing && currentPipeline) {
     return (
       <Layout>
-        <EditPipeline />
+        <div className="h-full overflow-y-auto">
+          <EditPipeline />
+        </div>
       </Layout>
     );
   }
@@ -125,13 +129,15 @@ function AppContent() {
   return (
     <Layout>
       {!currentPipeline ? (
-        <CreatePipeline />
+        <div className="h-full overflow-y-auto">
+          <CreatePipeline />
+        </div>
       ) : (
         <div className="flex flex-col h-full">
           <ActiveExecutionTabs />
           <div className="flex flex-1 min-h-0">
           {/* Main pipeline area */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
             <StatusBanner />

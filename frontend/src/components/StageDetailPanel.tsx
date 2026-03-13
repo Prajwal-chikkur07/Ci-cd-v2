@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Terminal, Info, Clock, RotateCcw, AlertTriangle, Zap, ScrollText } from 'lucide-react';
+import { X, Terminal, Info, Clock, RotateCcw, AlertTriangle, Zap, ScrollText, ExternalLink } from 'lucide-react';
 import { usePipelineContext } from '../context/PipelineContext';
 import { statusConfig, agentColors } from '../utils/statusColors';
 import type { LogType } from '../types/pipeline';
@@ -25,7 +25,7 @@ const logTypeColors: Record<string, { color: string; label: string }> = {
 };
 
 export default function StageDetailPanel() {
-  const { currentPipeline, selectedStageId, stageStatuses, stageResults, recoveryPlans, executionLogs, selectStage } =
+  const { currentPipeline, selectedStageId, stageStatuses, stageResults, recoveryPlans, executionLogs, selectStage, deployUrl } =
     usePipelineContext();
   const [tab, setTab] = useState<'output' | 'details' | 'logs'>('output');
 
@@ -177,6 +177,19 @@ export default function StageDetailPanel() {
                   {result.stderr}
                 </pre>
               </div>
+            )}
+
+            {stage.agent === 'deploy' && deployUrl && status === 'success' && (
+              <a
+                href={deployUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}
+              >
+                <ExternalLink className="w-4 h-4" />
+                Application running at {deployUrl}
+              </a>
             )}
 
             {result && result.exit_code !== 0 && result.exit_code !== -1 && (

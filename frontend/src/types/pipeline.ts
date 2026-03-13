@@ -54,6 +54,7 @@ export interface StageUpdate {
   modified_command?: string;
   log_type?: LogType;
   log_message?: string;
+  deploy_url?: string;
 }
 
 export type LogType =
