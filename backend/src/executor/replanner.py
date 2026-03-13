@@ -113,6 +113,7 @@ async def execute_recovery(
     stage: Stage,
     scheduler: DAGScheduler,
     agents: dict,
+    working_dir: str = ".",
 ) -> StageResult | None:
     """Execute a recovery plan and return the result if retried."""
     from src.models.messages import StageRequest
@@ -132,7 +133,7 @@ async def execute_recovery(
         request = StageRequest(
             stage_id=stage.id,
             command=plan.modified_command,
-            working_dir=".",
+            working_dir=working_dir,
             env_vars=stage.env_vars,
             timeout=stage.timeout_seconds,
         )
@@ -161,7 +162,7 @@ async def execute_recovery(
                 request = StageRequest(
                     stage_id=f"{stage.id}_rollback",
                     command=step,
-                    working_dir=".",
+                    working_dir=working_dir,
                     timeout=120,
                 )
                 await agent.execute(request)

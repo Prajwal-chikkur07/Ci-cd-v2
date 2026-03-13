@@ -18,7 +18,7 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         audit_cmd = "pnpm audit --audit-level moderate || true"
     else:
         run = "npm"
-        install_cmd = "npm ci" if analysis.has_package_lock else "npm install"
+        install_cmd = "npm ci || npm install" if analysis.has_package_lock else "npm install"
         audit_cmd = "npm audit --audit-level=moderate || true"
 
     stages: list[Stage] = []

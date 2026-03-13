@@ -387,7 +387,7 @@ async def run_pipeline(
                     "log_message": f"Recovery plan for '{stage_id}': {plan.strategy.value} — {plan.reason}" + (f" | New command: {plan.modified_command[:80]}" if plan.modified_command else ""),
                 })
 
-                recovery_result = await execute_recovery(plan, stage, scheduler, agents)
+                recovery_result = await execute_recovery(plan, stage, scheduler, agents, working_dir)
                 if recovery_result is None:
                     scheduler.mark_complete(stage_id, StageStatus.FAILED, result)
                     scheduler.skip_dependents(stage_id)
