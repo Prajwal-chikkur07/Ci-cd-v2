@@ -1,21 +1,25 @@
 from src.creator.templates.deploy_commands import get_deploy_command, get_health_check_command
 from src.models.pipeline import AgentType, RepoAnalysis, Stage
 
+# All Python commands are prefixed with venv activation so tools are on PATH
+VENV_PREFIX = "python3 -m venv .venv 2>/dev/null; source .venv/bin/activate && "
+
 
 def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     """Generate a Python CI/CD pipeline with proper DAG parallelism."""
     # Smart install: include test extras if available
     if analysis.has_requirements_txt:
-        install_cmd = "pip install -r requirements.txt"
+        install_cmd = f"{VENV_PREFIX}pip install -r requirements.txt"
     elif analysis.has_test_extras:
         install_cmd = (
+            f"{VENV_PREFIX}"
             "pip install -e '.[dev]' 2>/dev/null || "
             "pip install -e '.[test]' 2>/dev/null || "
             "pip install -e '.[testing]' 2>/dev/null || "
             "pip install -e ."
         )
     else:
-        install_cmd = "pip install -e . && pip install pytest"
+        install_cmd = f"{VENV_PREFIX}pip install -e . && pip install pytest"
 
     stages: list[Stage] = []
 
@@ -35,7 +39,7 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         Stage(
             id="lint",
             agent=AgentType.TEST,
-            command="flake8 --max-line-length=120 --exclude=.git,__pycache__,.venv,build,dist . || true",
+            command=f"{VENV_PREFIX}pip install flake8 -q && flake8 --max-line-length=120 --exclude=.git,__pycache__,.venv,build,dist . || true",
             depends_on=["install"],
             timeout_seconds=60,
             critical=False,
@@ -50,7 +54,7 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         Stage(
             id="unit_test",
             agent=AgentType.TEST,
-            command=test_cmd,
+            command=f"{VENV_PREFIX}{test_cmd}",
             depends_on=["install"],
             timeout_seconds=300,
             critical=False,
@@ -61,7 +65,7 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         Stage(
             id="security_scan",
             agent=AgentType.SECURITY,
-            command="pip-audit 2>/dev/null || echo 'pip-audit completed with warnings'",
+            command=f"{VENV_PREFIX}pip install pip-audit -q && pip-audit 2>/dev/null || echo 'pip-audit completed with warnings'",
             depends_on=["install"],
             timeout_seconds=120,
             critical=False,
@@ -70,7 +74,10 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
 
     # Stage 3: Build (always present)
     build_depends = ["lint", "unit_test", "security_scan"]
-    build_cmd = "docker build -t app ." if analysis.has_dockerfile else "python setup.py check 2>/dev/null || pip install . || echo 'Build verification complete'"
+    if analysis.has_dockerfile:
+        build_cmd = "docker build -t app ."
+    else:
+        build_cmd = f"{VENV_PREFIX}python setup.py check 2>/dev/null || pip install . || echo 'Build verification complete'"
 
     stages.append(
         Stage(
@@ -89,7 +96,16 @@ def generate_python_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     should_deploy = any(kw in goal.lower() for kw in deploy_keywords)
 
     if should_deploy:
-        deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, "python -m deploy")
+        # Build a sensible fallback deploy command based on the framework
+        if analysis.framework in ("fastapi", "starlette"):
+            fallback_deploy = f"{VENV_PREFIX}pip install uvicorn -q && uvicorn main:app --host 0.0.0.0 --port 8000 &"
+        elif analysis.framework in ("flask",):
+            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && gunicorn -w 4 -b 0.0.0.0:8000 app:app &"
+        elif analysis.framework in ("django",):
+            fallback_deploy = f"{VENV_PREFIX}pip install gunicorn -q && gunicorn -w 4 -b 0.0.0.0:8000 config.wsgi:application &"
+        else:
+            fallback_deploy = "echo 'Deploy: no deploy target configured — set a target (docker, aws, heroku, k8s) in the goal'"
+        deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, fallback_deploy)
 
         stages.append(
             Stage(

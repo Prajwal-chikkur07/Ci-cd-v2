@@ -33,7 +33,7 @@ export default function PipelineDAG() {
   if (!currentPipeline) return null;
 
   return (
-    <div className="flex-1 min-h-0">
+    <div style={{ height: '500px', width: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

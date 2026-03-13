@@ -2,6 +2,16 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { listPipelines } from '../api/client';
 import type { PipelineSpec, StageStatus, StageResult, HistoryEntry, LogEntry, LogType } from '../types/pipeline';
 
+/** Tracks the state of a single executing pipeline (for parallel execution). */
+export interface ActiveExecution {
+  pipeline: PipelineSpec;
+  stageStatuses: Map<string, StageStatus>;
+  stageResults: Map<string, StageResult>;
+  logs: LogEntry[];
+  recoveryPlans: Map<string, { strategy: string; reason: string; modified_command?: string }>;
+  startedAt: string;
+}
+
 interface PipelineState {
   currentPipeline: PipelineSpec | null;
   stageStatuses: Map<string, StageStatus>;
@@ -13,6 +23,7 @@ interface PipelineState {
   isRegenerating: boolean;
   isEditing: boolean;
   executionLogs: LogEntry[];
+  activeExecutions: Map<string, ActiveExecution>;
 }
 
 interface PipelineActions {
@@ -34,6 +45,14 @@ interface PipelineActions {
   stopEditing: () => void;
   addLog: (entry: LogEntry) => void;
   clearLogs: () => void;
+  // Parallel execution actions
+  registerExecution: (pipelineId: string, pipeline: PipelineSpec) => void;
+  unregisterExecution: (pipelineId: string) => void;
+  updateExecutionStageStatus: (pipelineId: string, stageId: string, status: StageStatus) => void;
+  addExecutionLog: (pipelineId: string, entry: LogEntry) => void;
+  setExecutionRecoveryPlan: (pipelineId: string, stageId: string, plan: { strategy: string; reason: string; modified_command?: string }) => void;
+  setExecutionBulkResults: (pipelineId: string, results: Record<string, StageResult>) => void;
+  switchToExecution: (pipelineId: string) => void;
 }
 
 const PipelineContext = createContext<(PipelineState & PipelineActions) | null>(null);
@@ -49,6 +68,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<LogEntry[]>([]);
+  const [activeExecutions, setActiveExecutions] = useState<Map<string, ActiveExecution>>(new Map());
 
   // Load history from the backend on mount
   useEffect(() => {
@@ -71,6 +91,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setRecoveryPlans(new Map());
     setIsRegenerating(false);
     setIsEditing(false);
+    setExecutionLogs([]);
   }, []);
 
   const clearPipeline = useCallback(() => {
@@ -126,7 +147,17 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
   const stopExecution = useCallback(() => setIsExecuting(false), []);
 
   const addToHistory = useCallback((entry: HistoryEntry) => {
-    setExecutionHistory((prev) => [entry, ...prev]);
+    // If entry already has logs (e.g. from parallel execution), use those
+    if (entry.logs && entry.logs.length > 0) {
+      setExecutionHistory((prev) => [entry, ...prev]);
+      return;
+    }
+    // Otherwise, attach current execution logs to the history entry
+    setExecutionLogs((currentLogs) => {
+      const entryWithLogs = { ...entry, logs: currentLogs };
+      setExecutionHistory((prev) => [entryWithLogs, ...prev]);
+      return currentLogs;
+    });
   }, []);
 
   const removeFromHistory = useCallback((pipelineId: string) => {
@@ -167,6 +198,8 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setRecoveryPlans(new Map());
     setIsRegenerating(false);
     setIsEditing(false);
+    // Restore logs from history entry
+    setExecutionLogs(entry.logs || []);
   }, []);
 
   const startRegenerate = useCallback(() => setIsRegenerating(true), []);
@@ -179,6 +212,103 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const clearLogs = useCallback(() => setExecutionLogs([]), []);
 
+  // ── Parallel Execution Actions ──
+
+  const registerExecution = useCallback((pipelineId: string, pipeline: PipelineSpec) => {
+    setActiveExecutions((prev) => {
+      const next = new Map(prev);
+      const statuses = new Map<string, StageStatus>();
+      for (const stage of pipeline.stages) {
+        statuses.set(stage.id, 'pending');
+      }
+      next.set(pipelineId, {
+        pipeline,
+        stageStatuses: statuses,
+        stageResults: new Map(),
+        logs: [],
+        recoveryPlans: new Map(),
+        startedAt: new Date().toISOString(),
+      });
+      return next;
+    });
+  }, []);
+
+  const unregisterExecution = useCallback((pipelineId: string) => {
+    setActiveExecutions((prev) => {
+      const next = new Map(prev);
+      next.delete(pipelineId);
+      return next;
+    });
+  }, []);
+
+  const updateExecutionStageStatus = useCallback((pipelineId: string, stageId: string, status: StageStatus) => {
+    setActiveExecutions((prev) => {
+      const exec = prev.get(pipelineId);
+      if (!exec) return prev;
+      const next = new Map(prev);
+      const newStatuses = new Map(exec.stageStatuses);
+      newStatuses.set(stageId, status);
+      next.set(pipelineId, { ...exec, stageStatuses: newStatuses });
+      return next;
+    });
+  }, []);
+
+  const addExecutionLog = useCallback((pipelineId: string, entry: LogEntry) => {
+    setActiveExecutions((prev) => {
+      const exec = prev.get(pipelineId);
+      if (!exec) return prev;
+      const next = new Map(prev);
+      next.set(pipelineId, { ...exec, logs: [...exec.logs, entry] });
+      return next;
+    });
+  }, []);
+
+  const setExecutionRecoveryPlan = useCallback((pipelineId: string, stageId: string, plan: { strategy: string; reason: string; modified_command?: string }) => {
+    setActiveExecutions((prev) => {
+      const exec = prev.get(pipelineId);
+      if (!exec) return prev;
+      const next = new Map(prev);
+      const newPlans = new Map(exec.recoveryPlans);
+      newPlans.set(stageId, plan);
+      next.set(pipelineId, { ...exec, recoveryPlans: newPlans });
+      return next;
+    });
+  }, []);
+
+  const setExecutionBulkResults = useCallback((pipelineId: string, results: Record<string, StageResult>) => {
+    setActiveExecutions((prev) => {
+      const exec = prev.get(pipelineId);
+      if (!exec) return prev;
+      const next = new Map(prev);
+      const newResults = new Map<string, StageResult>();
+      const newStatuses = new Map(exec.stageStatuses);
+      for (const [id, result] of Object.entries(results)) {
+        newResults.set(id, result);
+        newStatuses.set(id, result.status);
+      }
+      next.set(pipelineId, { ...exec, stageResults: newResults, stageStatuses: newStatuses });
+      return next;
+    });
+  }, []);
+
+  const switchToExecution = useCallback((pipelineId: string) => {
+    setActiveExecutions((prev) => {
+      const exec = prev.get(pipelineId);
+      if (!exec) return prev;
+      // Load this execution's state into the main view
+      setCurrentPipeline(exec.pipeline);
+      setStageStatuses(exec.stageStatuses);
+      setStageResults(exec.stageResults);
+      setExecutionLogs(exec.logs);
+      setRecoveryPlans(exec.recoveryPlans);
+      setIsExecuting(true);
+      setSelectedStageId(null);
+      setIsRegenerating(false);
+      setIsEditing(false);
+      return prev;
+    });
+  }, []);
+
   const value: PipelineState & PipelineActions = {
     currentPipeline,
     stageStatuses,
@@ -190,6 +320,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     isRegenerating,
     isEditing,
     executionLogs,
+    activeExecutions,
     setPipeline,
     clearPipeline,
     updateStageStatus,
@@ -208,6 +339,13 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     stopEditing,
     addLog,
     clearLogs,
+    registerExecution,
+    unregisterExecution,
+    updateExecutionStageStatus,
+    addExecutionLog,
+    setExecutionRecoveryPlan,
+    setExecutionBulkResults,
+    switchToExecution,
   };
 
   return (

@@ -92,13 +92,16 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     else:
         build_cmd = "echo 'No build script found — install verified, package is ready'"
 
+    # Next.js builds are heavier — give them more time and a retry
+    is_nextjs = analysis.framework in ("nextjs", "next")
     stages.append(
         Stage(
             id="build",
             agent=AgentType.BUILD,
             command=build_cmd,
             depends_on=["lint", "unit_test", "security_scan"],
-            timeout_seconds=300,
+            timeout_seconds=600 if is_nextjs else 300,
+            retry_count=1 if is_nextjs else 0,
         )
     )
 

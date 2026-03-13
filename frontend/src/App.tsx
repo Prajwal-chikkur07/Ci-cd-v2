@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { usePipelineContext } from './context/PipelineContext';
 import Layout from './components/Layout';
 import CreatePipeline from './components/CreatePipeline';
@@ -7,6 +8,7 @@ import ExecutionControls from './components/ExecutionControls';
 import StageDetailPanel from './components/StageDetailPanel';
 import StatusBanner from './components/StatusBanner';
 import ExecutionLog from './components/ExecutionLog';
+import ActiveExecutionTabs from './components/ActiveExecutionTabs';
 import { agentColors } from './utils/statusColors';
 
 function PipelineInfo() {
@@ -68,7 +70,28 @@ function PipelineInfo() {
 }
 
 function AppContent() {
-  const { currentPipeline, isRegenerating, isEditing } = usePipelineContext();
+  const { currentPipeline, isRegenerating, isEditing, executionLogs, isExecuting } = usePipelineContext();
+  const [logsManuallyHidden, setLogsManuallyHidden] = useState(false);
+
+  const handleToggleLogs = () => {
+    if (executionLogs.length > 0 || isExecuting) {
+      // Has logs — toggle visibility
+      setLogsManuallyHidden((prev) => !prev);
+    } else {
+      // No logs — just open empty panel
+      setLogsManuallyHidden((prev) => !prev);
+    }
+  };
+
+  // Reset manual hide when execution starts or pipeline changes (e.g. loading from history)
+  useEffect(() => {
+    if (isExecuting) setLogsManuallyHidden(false);
+  }, [isExecuting]);
+
+  useEffect(() => {
+    // When pipeline changes and has logs, auto-show
+    if (executionLogs.length > 0) setLogsManuallyHidden(false);
+  }, [currentPipeline?.pipeline_id]);
 
   // Show regenerate form (pre-filled with current pipeline's repo/goal/name)
   if (isRegenerating && currentPipeline) {
@@ -95,22 +118,29 @@ function AppContent() {
     );
   }
 
+  // Auto-show when executing or when logs exist, unless manually hidden
+  const hasLogs = executionLogs.length > 0;
+  const logsVisible = logsManuallyHidden ? false : (hasLogs || isExecuting);
+
   return (
     <Layout>
       {!currentPipeline ? (
         <CreatePipeline />
       ) : (
-        <div className="flex h-full">
+        <div className="flex flex-col h-full">
+          <ActiveExecutionTabs />
+          <div className="flex flex-1 min-h-0">
           {/* Main pipeline area */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
             <PipelineInfo />
-            <ExecutionControls />
+            <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
             <StatusBanner />
             <PipelineDAG />
             <StageDetailPanel />
           </div>
           {/* Right sidebar — Execution Log */}
-          <ExecutionLog />
+          {logsVisible && <ExecutionLog />}
+          </div>
         </div>
       )}
     </Layout>

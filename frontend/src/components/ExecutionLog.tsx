@@ -113,8 +113,6 @@ export default function ExecutionLog() {
     }
   }, [executionLogs.length]);
 
-  if (executionLogs.length === 0) return null;
-
   return (
     <aside className="w-[300px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0 h-full">
       {/* Header */}
@@ -133,9 +131,16 @@ export default function ExecutionLog() {
 
       {/* Log entries */}
       <div className="flex-1 overflow-y-auto">
-        {executionLogs.map((entry, i) => (
-          <LogLine key={i} entry={entry} />
-        ))}
+        {executionLogs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
+            <ScrollText className="w-8 h-8 mb-2 text-gray-300" />
+            <p className="text-xs text-center">No logs yet. Execute a pipeline to see real-time logs here.</p>
+          </div>
+        ) : (
+          executionLogs.map((entry, i) => (
+            <LogLine key={i} entry={entry} />
+          ))
+        )}
         <div ref={bottomRef} />
       </div>
 

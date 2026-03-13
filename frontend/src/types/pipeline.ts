@@ -83,4 +83,5 @@ export interface HistoryEntry {
   results: Record<string, StageResult> | null;
   completedAt: string;
   overallStatus: 'success' | 'failed' | 'partial';
+  logs?: LogEntry[];
 }

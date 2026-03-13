@@ -1,11 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Play, Loader2, CheckCircle, XCircle, RefreshCw, Pencil } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import type { LogEntry } from '../types/pipeline';
+import { Play, Loader2, CheckCircle, XCircle, RefreshCw, Pencil, ScrollText } from 'lucide-react';
 import { usePipelineContext } from '../context/PipelineContext';
 import { usePipeline } from '../hooks/usePipeline';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { StageUpdate } from '../types/pipeline';
 
-export default function ExecutionControls() {
+interface ExecutionControlsProps {
+  onToggleLogs?: () => void;
+  showLogs?: boolean;
+}
+
+export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionControlsProps) {
   const {
     currentPipeline,
     stageStatuses,
@@ -20,14 +26,29 @@ export default function ExecutionControls() {
     startEditing,
     addLog,
     clearLogs,
+    executionLogs,
+    // Parallel execution
+    registerExecution,
+    unregisterExecution,
+    updateExecutionStageStatus,
+    addExecutionLog,
+    setExecutionRecoveryPlan,
+    setExecutionBulkResults,
   } = usePipelineContext();
 
   const { loading, error, execute } = usePipeline();
   const [elapsed, setElapsed] = useState(0);
   const [wsActive, setWsActive] = useState(false);
   const [pipelineIdForWs, setPipelineIdForWs] = useState<string | null>(null);
+  // Track which pipeline ID the current execution is for (to update the right active execution)
+  const executingPipelineId = useRef<string | null>(null);
+  // Collect logs in a ref so they're always available for history
+  const collectedLogsRef = useRef<LogEntry[]>([]);
 
   const onWsUpdate = useCallback((update: StageUpdate) => {
+    const pid = executingPipelineId.current;
+
+    // Update the main view (current pipeline)
     if (update.stage_id) {
       updateStageStatus(update.stage_id, update.status);
     }
@@ -38,17 +59,37 @@ export default function ExecutionControls() {
         modified_command: update.modified_command,
       });
     }
-    // Capture log entry
     if (update.log_type && update.log_message) {
-      addLog({
+      const logEntry = {
         timestamp: new Date().toISOString(),
         stage_id: update.stage_id || undefined,
         type: update.log_type,
         message: update.log_message,
         details: update.log_tail,
-      });
+      };
+      addLog(logEntry);
+      collectedLogsRef.current.push(logEntry);
+
+      // Also update the parallel execution tracker
+      if (pid) {
+        addExecutionLog(pid, logEntry);
+      }
     }
-  }, [updateStageStatus, setRecoveryPlan, addLog]);
+
+    // Update parallel execution tracker
+    if (pid) {
+      if (update.stage_id) {
+        updateExecutionStageStatus(pid, update.stage_id, update.status);
+      }
+      if (update.recovery_strategy) {
+        setExecutionRecoveryPlan(pid, update.stage_id, {
+          strategy: update.recovery_strategy,
+          reason: update.recovery_reason ?? '',
+          modified_command: update.modified_command,
+        });
+      }
+    }
+  }, [updateStageStatus, setRecoveryPlan, addLog, addExecutionLog, updateExecutionStageStatus, setExecutionRecoveryPlan]);
 
   useWebSocket(wsActive ? pipelineIdForWs : null, onWsUpdate);
 
@@ -63,30 +104,44 @@ export default function ExecutionControls() {
   const handleExecute = async () => {
     if (!currentPipeline) return;
 
+    const pid = currentPipeline.pipeline_id;
+    executingPipelineId.current = pid;
+
     // Reset all statuses to pending
     for (const stage of currentPipeline.stages) {
       updateStageStatus(stage.id, 'pending');
     }
 
     clearLogs();
+    collectedLogsRef.current = [];
     startExecution();
     setElapsed(0);
-    setPipelineIdForWs(currentPipeline.pipeline_id);
+    setPipelineIdForWs(pid);
     setWsActive(true);
 
-    const results = await execute(currentPipeline.pipeline_id);
+    // Register as active parallel execution
+    registerExecution(pid, currentPipeline);
+
+    const results = await execute(pid);
 
     setWsActive(false);
     stopExecution();
+    executingPipelineId.current = null;
+
+    // Unregister from active executions
+    unregisterExecution(pid);
 
     if (results) {
       setBulkResults(results);
+      setExecutionBulkResults(pid, results);
       const hasFailed = Object.values(results).some((r) => r.status === 'failed');
+      // Pass collected logs explicitly so they're captured reliably
       addToHistory({
         pipeline: currentPipeline,
         results,
         completedAt: new Date().toISOString(),
         overallStatus: hasFailed ? 'failed' : 'success',
+        logs: collectedLogsRef.current,
       });
     }
   };
@@ -143,6 +198,27 @@ export default function ExecutionControls() {
       >
         <Pencil className="w-3.5 h-3.5" />
         Edit
+      </button>
+
+      {/* Logs toggle button */}
+      <button
+        onClick={onToggleLogs}
+        className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+          showLogs
+            ? 'bg-purple-100 text-purple-700'
+            : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+        }`}
+        title={showLogs ? 'Hide execution logs' : 'Show execution logs'}
+      >
+        <ScrollText className="w-3.5 h-3.5" />
+        Logs
+        {executionLogs.length > 0 && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+            showLogs ? 'bg-purple-200 text-purple-800' : 'bg-gray-200 text-gray-600'
+          }`}>
+            {executionLogs.length}
+          </span>
+        )}
       </button>
 
       {/* Progress */}
