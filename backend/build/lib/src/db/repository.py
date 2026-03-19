@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from src.db.models import PipelineRow, StageResultRow
 from src.db.session import async_session
-from src.models.messages import PipelineExecutionResult, StageResult
+from src.models.messages import StageResult
 from src.models.pipeline import PipelineSpec
 
 
@@ -48,38 +48,28 @@ async def get_pipeline(pipeline_id: str) -> PipelineSpec | None:
         return PipelineSpec.model_validate_json(row.spec_json)
 
 
-async def save_results(pipeline_id: str, execution_result: PipelineExecutionResult) -> None:
-    """Persist execution results for a pipeline and update the pipeline status."""
+async def save_results(pipeline_id: str, results: dict[str, StageResult]) -> None:
+    """Persist execution results for a pipeline."""
     async with async_session() as session:
-        # 1. Update overall pipeline status
-        result = await session.execute(
-            select(PipelineRow).where(PipelineRow.pipeline_id == pipeline_id)
-        )
-        pipeline_row = result.scalar_one_or_none()
-        if pipeline_row:
-            pipeline_row.overall_status = execution_result.overall_status
-            pipeline_row.goal_achieved = "true" if execution_result.goal_achieved else "false"
-            pipeline_row.execution_duration = str(execution_result.duration_seconds)
-
-        # 2. Delete old stage results
+        # Delete old results for this pipeline
         old = await session.execute(
             select(StageResultRow).where(StageResultRow.pipeline_id == pipeline_id)
         )
         for row in old.scalars():
             await session.delete(row)
 
-        # 3. Insert new stage results
-        for stage_id, res in execution_result.stages.items():
+        # Insert new results
+        for stage_id, result in results.items():
             row = StageResultRow(
                 id=str(uuid.uuid4()),
                 pipeline_id=pipeline_id,
                 stage_id=stage_id,
-                status=res.status.value,
-                exit_code=str(res.exit_code),
-                stdout=res.stdout,
-                stderr=res.stderr,
-                duration_seconds=str(res.duration_seconds),
-                result_json=res.model_dump_json(),
+                status=result.status.value,
+                exit_code=str(result.exit_code),
+                stdout=result.stdout,
+                stderr=result.stderr,
+                duration_seconds=str(result.duration_seconds),
+                result_json=result.model_dump_json(),
             )
             session.add(row)
         await session.commit()
@@ -115,41 +105,16 @@ async def delete_pipeline(pipeline_id: str) -> bool:
         return True
 
 
-async def get_results(pipeline_id: str) -> PipelineExecutionResult | None:
-    """Load execution results for a pipeline and synthesize the structural result."""
+async def get_results(pipeline_id: str) -> dict[str, StageResult] | None:
+    """Load execution results for a pipeline."""
     async with async_session() as session:
-        # Load pipeline row for metadata
-        pipeline_res = await session.execute(
-            select(PipelineRow).where(PipelineRow.pipeline_id == pipeline_id)
-        )
-        pipeline_row = pipeline_res.scalar_one_or_none()
-        if not pipeline_row:
-            return None
-
-        # Load stage results
         result = await session.execute(
             select(StageResultRow).where(StageResultRow.pipeline_id == pipeline_id)
         )
         rows = result.scalars().all()
         if not rows:
             return None
-        
-        stages = {
+        return {
             row.stage_id: StageResult.model_validate_json(row.result_json)
             for row in rows
         }
-        
-        # Determine final output (like app_url) from stage metadata
-        final_output = {}
-        for res in stages.values():
-            if "deploy_url" in res.metadata:
-                final_output["app_url"] = res.metadata["deploy_url"]
-
-        return PipelineExecutionResult(
-            pipeline_id=pipeline_id,
-            overall_status=pipeline_row.overall_status,
-            goal_achieved=pipeline_row.goal_achieved == "true",
-            stages=stages,
-            duration_seconds=float(pipeline_row.execution_duration or 0.0),
-            final_output=final_output
-        )

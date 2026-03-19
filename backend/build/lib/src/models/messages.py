@@ -44,12 +44,3 @@ class RecoveryPlan(BaseModel):
     reason: str
     modified_command: Optional[str] = None
     rollback_steps: list[str] = []
-
-
-class PipelineExecutionResult(BaseModel):
-    pipeline_id: str
-    overall_status: str  # "success", "failed", "blocked"
-    goal_achieved: bool
-    stages: dict[str, StageResult]
-    final_output: dict[str, str] = {}
-    duration_seconds: float = 0.0

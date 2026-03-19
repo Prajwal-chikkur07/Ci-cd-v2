@@ -30,23 +30,27 @@ def get_deploy_command(deploy_target: Optional[str], has_dockerfile: bool, fallb
         return "echo 'Deploy: package application for distribution'"
 
 
-def get_health_check_command(deploy_target: Optional[str], default_port: int = 8080, log_file: str = "app.log") -> str:
-    """Return a robust health check command with port discovery and retries."""
+def get_health_check_command(deploy_target: Optional[str], default_port: int = 8080) -> str:
+    """Return a health check command based on the deploy target.
+
+    Uses -s -o /dev/null -w '%{http_code}' to accept any HTTP response (even 404)
+    as proof the service is running. Only fails if the service is unreachable.
+
+    The STAGE_DEPLOY_DEPLOY_URL env var is set automatically by inter-stage
+    communication when the deploy stage detects or assigns a dynamic port.
+    """
     if deploy_target in ("kubernetes", "k8s"):
         return "kubectl get pods -l app=app --field-selector=status.phase=Running | grep -q Running"
-    
-    script = f"""
-    PORT_LOG=\\$(grep -oE 'listening on port [0-9]+|Port [0-9]+' {log_file} | awk '{{print \\$NF}}' | head -n 1)
-    CHECK_PORT=\\${{PORT_LOG:-{default_port}}}
-    for i in {{1..15}}; do
-        for P in \\$CHECK_PORT 3000 5000 5006 8080 8000; do
-            if curl -s -o /dev/null -w "%{{http_code}}" http://localhost:\\$P | grep -q 200; then
-                echo "Success: service up on port \\$P"
-                exit 0
-            fi
-        done
-        sleep 1
-    done
-    exit 1
-    """.strip()
-    return f"bash -c \"{script.replace('\"', '\\\"')}\""
+    elif deploy_target == "heroku":
+        return "curl -s -o /dev/null -w '%{http_code}' https://$(heroku apps:info -s | grep web_url | cut -d= -f2) | grep -qE '^[2-5]' || true"
+    elif deploy_target == "aws":
+        return (
+            f"HEALTH_URL=${{STAGE_DEPLOY_DEPLOY_URL:-http://localhost:{default_port}}} && "
+            "curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{http_code}' $HEALTH_URL/ | grep -qE '^[2-5]'"
+        )
+    else:
+        return (
+            f"HEALTH_URL=${{STAGE_DEPLOY_DEPLOY_URL:-http://localhost:{default_port}}} && "
+            "sleep 2 && curl -s --retry 3 --retry-delay 2 -o /dev/null -w '%{http_code}' $HEALTH_URL/ | grep -qE '^[2-5]' && "
+            "echo \"Health check: service is responding at $HEALTH_URL\""
+        )

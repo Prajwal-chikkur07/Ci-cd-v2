@@ -29,42 +29,49 @@ def generate_rust_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         )
     )
 
-
-    # Stage 3: Build
     stages.append(
         Stage(
-            id="build",
-            agent=AgentType.BUILD,
-            command="cargo build --release",
-            depends_on=["lint"],
-            timeout_seconds=600,
+            id="unit_test",
+            agent=AgentType.TEST,
+            command="cargo test",
+            depends_on=["install"],
+            timeout_seconds=300,
         )
     )
 
-    # Stage 4: security_scan
     stages.append(
         Stage(
             id="security_scan",
             agent=AgentType.SECURITY,
             command="cargo audit 2>/dev/null || echo 'cargo-audit not installed, skipping'",
-            depends_on=["build"],
+            depends_on=["install"],
             timeout_seconds=120,
             critical=False,
         )
     )
 
-    # Stage 5: Integration test (after build, before deploy)
+    # Stage 3: Build (release)
+    stages.append(
+        Stage(
+            id="build",
+            agent=AgentType.BUILD,
+            command="cargo build --release",
+            depends_on=["lint", "unit_test", "security_scan"],
+            timeout_seconds=600,
+        )
+    )
+
+    # Stage 4: Integration test (after build, before deploy)
     stages.append(
         Stage(
             id="integration_test",
             agent=AgentType.TEST,
             command="cargo test --test '*' 2>/dev/null || echo 'No integration tests found — skipping'",
-            depends_on=["security_scan"],
+            depends_on=["build"],
             timeout_seconds=300,
             critical=False,
         )
     )
-
 
     # Stage 5: Deploy
     deploy_keywords = ["deploy", "release", "publish", "production", "staging"]
@@ -78,7 +85,7 @@ def generate_rust_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
                 id="deploy",
                 agent=AgentType.DEPLOY,
                 command=deploy_cmd,
-                depends_on=["security_scan"],
+                depends_on=["integration_test"],
                 timeout_seconds=600,
                 retry_count=1,
             )

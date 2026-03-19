@@ -20,11 +20,6 @@ class PipelineRow(Base):
     work_dir = Column(String, default="")
     # Store full PipelineSpec as JSON (analysis + stages)
     spec_json = Column(Text, nullable=False)
-    
-    # Tracking results
-    overall_status = Column(String, default="not_executed")
-    goal_achieved = Column(Text, default="false") # Store as string "true"/"false" for simplicity in SQLite if needed, or Boolean
-    execution_duration = Column(String, default="0.0")
 
     results = relationship("StageResultRow", back_populates="pipeline", cascade="all, delete-orphan")
 

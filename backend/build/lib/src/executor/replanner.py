@@ -30,63 +30,10 @@ Guidelines:
 Respond with ONLY the JSON object, no markdown or explanation."""
 
 
-def get_rule_based_plan(stage: Stage, result: StageResult) -> RecoveryPlan | None:
-    """Check for common failure patterns and suggest a known fix."""
-    stderr = result.stderr or ""
-    stdout = result.stdout or ""
-    combined = stderr + stdout
-
-    # Rule 1: Flask [async] extra missing
-    if "RuntimeError: Install Flask with the 'async' extra" in combined:
-        return RecoveryPlan(
-            strategy=RecoveryStrategy.FIX_AND_RETRY,
-            reason="Flask async support missing. Automatically adding 'flask[async]' dependency.",
-            modified_command=f"pip install 'flask[async]' && {stage.command}",
-        )
-
-    # Rule 2: Python Module Missing
-    import re
-    module_match = re.search(r"ModuleNotFoundError: No module named '([^']+)'", combined)
-    if module_match:
-        module_name = module_match.group(1)
-        return RecoveryPlan(
-            strategy=RecoveryStrategy.FIX_AND_RETRY,
-            reason=f"Missing Python module: {module_name}. Attempting to install.",
-            modified_command=f"pip install {module_name} && {stage.command}",
-        )
-
-    # Rule 3: Command not found
-    cmd_match = re.search(r"sh: (.*): command not found", combined)
-    if cmd_match:
-        cmd_name = cmd_match.group(1)
-        return RecoveryPlan(
-            strategy=RecoveryStrategy.FIX_AND_RETRY,
-            reason=f"System command not found: {cmd_name}. Attempting to install via pip/npm.",
-            modified_command=f"(pip install {cmd_name} 2>/dev/null || npm install -g {cmd_name} 2>/dev/null) && {stage.command}",
-        )
-
-    # Rule 4: Port already in use (if not caught by dispatcher)
-    if "Address already in use" in combined or "EADDRINUSE" in combined:
-        return RecoveryPlan(
-            strategy=RecoveryStrategy.FIX_AND_RETRY,
-            reason="Port conflict detected. Re-running on a dynamic port.",
-            modified_command=f"export PORT=0 && {stage.command}",
-        )
-
-    return None
-
-
 async def analyze_failure(
     stage: Stage, result: StageResult, spec: PipelineSpec
 ) -> RecoveryPlan:
-    """Use rule-based analysis followed by Gemini AI if needed."""
-    # 1. Try rule-based analysis first (fast and deterministic)
-    rule_plan = get_rule_based_plan(stage, result)
-    if rule_plan:
-        logger.info("Rule-based recovery plan found for stage %s", stage.id)
-        return rule_plan
-
-    # 2. Fall back to Gemini if no rule matches
+    """Use Gemini to analyze a stage failure and recommend a recovery strategy."""
     if not settings.gemini_api_key:
         logger.warning("No GEMINI_API_KEY configured — skipping AI recovery for stage %s", stage.id)
         return RecoveryPlan(

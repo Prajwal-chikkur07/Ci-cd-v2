@@ -23,17 +23,12 @@ TEMPLATE_MAP: dict[str, callable] = {
 
 
 def _validate_dag(stages: list[Stage]) -> None:
-    """Validate that stage dependencies form a valid DAG (no cycles) and IDs are unique."""
+    """Validate that stage dependencies form a valid DAG (no cycles)."""
     graph = nx.DiGraph()
-    stage_ids = set()
+    stage_ids = {s.id for s in stages}
 
     for stage in stages:
-        if stage.id in stage_ids:
-            raise ValueError(f"Duplicate stage ID found: '{stage.id}'")
-        stage_ids.add(stage.id)
         graph.add_node(stage.id)
-
-    for stage in stages:
         for dep in stage.depends_on:
             if dep not in stage_ids:
                 raise ValueError(

@@ -1,7 +1,6 @@
 import logging
 
 import uvicorn
-from contextlib import asynccontextmanager
 from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,7 +11,7 @@ from src.creator.generator import generate_pipeline
 from src.db import repository as db
 from src.db.session import init_db
 from src.executor.dispatcher import run_pipeline
-from src.models.messages import PipelineExecutionResult, StageResult
+from src.models.messages import StageResult
 from src.models.pipeline import PipelineSpec, Stage
 
 logging.basicConfig(
@@ -32,15 +31,9 @@ app.add_middleware(
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
+@app.on_event("startup")
+async def startup() -> None:
     await init_db()
-    yield
-    # Shutdown (optional cleanup here)
-
-
-app = FastAPI(title="CI/CD Pipeline Orchestrator", lifespan=lifespan)
 
 
 @app.get("/pipelines")
@@ -49,20 +42,16 @@ async def list_pipelines() -> list[dict]:
     specs = await db.list_pipelines()
     history = []
     for spec in specs:
-        exec_result = await db.get_results(spec.pipeline_id)
-        if not exec_result:
-            overall = "not_executed"
-            goal_achieved = False
-        else:
-            overall = exec_result.overall_status
-            goal_achieved = exec_result.goal_achieved
-
+        results = await db.get_results(spec.pipeline_id)
+        overall = "success"
+        if results:
+            has_failed = any(r.status.value == "failed" for r in results.values())
+            overall = "failed" if has_failed else "success"
         history.append({
             "pipeline": spec.model_dump(mode="json"),
-            "results": exec_result.model_dump(mode="json") if exec_result else None,
+            "results": {k: v.model_dump(mode="json") for k, v in results.items()} if results else None,
             "completedAt": spec.created_at.isoformat(),
             "overallStatus": overall,
-            "goalAchieved": goal_achieved,
         })
     return history
 
@@ -88,7 +77,7 @@ async def create_pipeline(
 
 
 @app.post("/pipelines/{pipeline_id}/execute")
-async def execute_pipeline(pipeline_id: str) -> PipelineExecutionResult:
+async def execute_pipeline(pipeline_id: str) -> dict[str, StageResult]:
     """Execute a generated pipeline."""
     spec = await db.get_pipeline(pipeline_id)
     if not spec:
@@ -123,12 +112,11 @@ async def update_pipeline(pipeline_id: str, update: PipelineUpdate) -> PipelineS
     spec = await db.get_pipeline(pipeline_id)
     if not spec:
         raise HTTPException(status_code=404, detail="Pipeline not found")
-    if update.name is not None and update.name != "string":
+    if update.name is not None:
         spec.name = update.name
-    if update.goal is not None and update.goal != "string":
+    if update.goal is not None:
         spec.goal = update.goal
     if update.stages is not None:
-        # Filter out any stages that might have placeholder 'string' values in critical fields
         spec.stages = update.stages
     updated = await db.update_pipeline(spec)
     if not updated:
@@ -147,7 +135,7 @@ async def delete_pipeline(pipeline_id: str) -> dict[str, str]:
 
 
 @app.get("/pipelines/{pipeline_id}/results")
-async def get_results(pipeline_id: str) -> PipelineExecutionResult:
+async def get_results(pipeline_id: str) -> dict[str, StageResult]:
     """Get execution results for a pipeline."""
     result = await db.get_results(pipeline_id)
     if not result:

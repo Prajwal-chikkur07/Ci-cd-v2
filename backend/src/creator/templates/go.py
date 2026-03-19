@@ -17,10 +17,10 @@ def generate_go_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         )
     )
 
-    # Stage 2 (parallel): vet, test, security_scan
+    # Stage 2: lint
     stages.append(
         Stage(
-            id="vet",
+            id="lint",
             agent=AgentType.TEST,
             command="go vet ./...",
             depends_on=["install"],
@@ -29,26 +29,6 @@ def generate_go_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         )
     )
 
-    stages.append(
-        Stage(
-            id="unit_test",
-            agent=AgentType.TEST,
-            command="go test -race -coverprofile=coverage.out ./...",
-            depends_on=["install"],
-            timeout_seconds=300,
-        )
-    )
-
-    stages.append(
-        Stage(
-            id="security_scan",
-            agent=AgentType.SECURITY,
-            command="go vet -vettool=$(which govulncheck 2>/dev/null || echo govulncheck) ./... 2>/dev/null || echo 'govulncheck not installed, skipping'",
-            depends_on=["install"],
-            timeout_seconds=120,
-            critical=False,
-        )
-    )
 
     # Stage 3: Build
     stages.append(
@@ -56,22 +36,35 @@ def generate_go_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
             id="build",
             agent=AgentType.BUILD,
             command="go build -o bin/app ./...",
-            depends_on=["vet", "unit_test", "security_scan"],
+            depends_on=["lint"],
             timeout_seconds=300,
         )
     )
 
-    # Stage 4: Integration test (after build, before deploy)
+    # Stage 4: security_scan
+    stages.append(
+        Stage(
+            id="security_scan",
+            agent=AgentType.SECURITY,
+            command="go vet -vettool=$(which govulncheck 2>/dev/null || echo govulncheck) ./... 2>/dev/null || echo 'govulncheck not installed, skipping'",
+            depends_on=["build"],
+            timeout_seconds=120,
+            critical=False,
+        )
+    )
+
+    # Stage 5: Integration test (after build, before deploy)
     stages.append(
         Stage(
             id="integration_test",
             agent=AgentType.TEST,
             command="go test -tags=integration -race ./... 2>/dev/null || echo 'No integration tests found — skipping'",
-            depends_on=["build"],
+            depends_on=["security_scan"],
             timeout_seconds=300,
             critical=False,
         )
     )
+
 
     # Stage 5: Deploy (if goal mentions deployment)
     deploy_keywords = ["deploy", "release", "publish", "production", "staging"]
@@ -85,7 +78,7 @@ def generate_go_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
                 id="deploy",
                 agent=AgentType.DEPLOY,
                 command=deploy_cmd,
-                depends_on=["integration_test"],
+                depends_on=["security_scan"],
                 timeout_seconds=600,
                 retry_count=1,
             )

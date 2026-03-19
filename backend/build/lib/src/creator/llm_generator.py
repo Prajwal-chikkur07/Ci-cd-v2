@@ -20,18 +20,14 @@ Each stage has:
 - critical: boolean, if false the pipeline continues on failure (default true)
 - env_vars: dict of environment variables (default {})
 
-Guidelines for specific goals:
-1. If the goal mentions "run", "start", or "local":
-   - Add a "run" stage (agent: "deploy") that starts the application in the background (using &).
-   - Add a "health_check_run" stage (agent: "verify") that waits (sleep 5-10s) and verifies the app is responding via curl.
-2. If the goal mentions "docker", "containerize", or "image":
-   - Add a "docker_build" stage (agent: "build") to build the Docker image.
-   - If "run" is also requested, add "docker_run" and "health_check_docker" stages.
-3. For "deploy" goals:
-   - Always include a "deploy" stage followed by a "health_check" stage (agent: "verify").
+Ensure depends_on forms a valid DAG (no cycles). Start with install/setup stages,
+then parallel lint/test/security, then build, then deploy, then verify.
 
-Start with install/setup stages, then parallel lint/test/security, then build, then deploy/run, then verify.
-Ensure all IDs are unique. Respond with ONLY the JSON array, no markdown formatting or explanation."""
+The health_check stage (agent: "verify") should use curl to verify the deployed application
+is responding. Include appropriate sleep time (5-10s) for the service to start before checking.
+Set critical: true and retry_count: 2 on health_check so the replanner can analyze failures.
+
+Respond with ONLY the JSON array, no markdown formatting or explanation."""
 
 GEMINI_MODEL = "gemini-2.0-flash"
 

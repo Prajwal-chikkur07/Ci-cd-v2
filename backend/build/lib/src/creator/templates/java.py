@@ -32,14 +32,24 @@ def generate_java_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         )
     )
 
-    # Stage 2: lint
+    # Stage 2 (parallel): test, security_scan
     stages.append(
         Stage(
-            id="lint",
+            id="unit_test",
             agent=AgentType.TEST,
-            command=f"{build_tool} check -x test 2>/dev/null || echo 'No linting configured, skipping'",
+            command=test_cmd,
             depends_on=["install"],
-            timeout_seconds=60,
+            timeout_seconds=300,
+        )
+    )
+
+    stages.append(
+        Stage(
+            id="security_scan",
+            agent=AgentType.SECURITY,
+            command=audit_cmd,
+            depends_on=["install"],
+            timeout_seconds=180,
             critical=False,
         )
     )
@@ -50,24 +60,12 @@ def generate_java_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
             id="build",
             agent=AgentType.BUILD,
             command=build_cmd,
-            depends_on=["lint"],
+            depends_on=["unit_test", "security_scan"],
             timeout_seconds=300,
         )
     )
 
-    # Stage 4: security_scan
-    stages.append(
-        Stage(
-            id="security_scan",
-            agent=AgentType.SECURITY,
-            command=audit_cmd,
-            depends_on=["build"],
-            timeout_seconds=180,
-            critical=False,
-        )
-    )
-
-    # Stage 5: Integration test (after build, before deploy)
+    # Stage 4: Integration test (after build, before deploy)
     if use_gradle:
         integ_test_cmd = f"{build_tool} integrationTest 2>/dev/null || {build_tool} test --tests '*IntegrationTest*' 2>/dev/null || echo 'No integration tests found — skipping'"
     else:
@@ -78,12 +76,11 @@ def generate_java_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
             id="integration_test",
             agent=AgentType.TEST,
             command=integ_test_cmd,
-            depends_on=["security_scan"],
+            depends_on=["build"],
             timeout_seconds=300,
             critical=False,
         )
     )
-
 
     # Stage 5: Deploy
     deploy_keywords = ["deploy", "release", "publish", "production", "staging"]
@@ -98,7 +95,7 @@ def generate_java_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
                 id="deploy",
                 agent=AgentType.DEPLOY,
                 command=deploy_cmd,
-                depends_on=["security_scan"],
+                depends_on=["integration_test"],
                 timeout_seconds=600,
                 retry_count=1,
             )
