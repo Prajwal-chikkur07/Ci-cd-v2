@@ -140,23 +140,26 @@ function PipelineView() {
 
   return (
     <Layout>
-      <div className="flex flex-col h-full bg-[#f9fafb]">
+      <div className="flex flex-col h-full bg-[#f9fafb] overflow-hidden">
         <ActiveExecutionTabs />
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Main content row — fills remaining height */}
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          {/* Left: pipeline canvas column */}
+          <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
             <StatusBanner />
-            <div className="flex-1 overflow-hidden relative min-h-0">
-              <div className="absolute inset-0">
-                <PipelineDAG />
-              </div>
+            {/* DAG fills all remaining vertical space */}
+            <div className="flex-1 relative overflow-hidden" style={{ minHeight: 0 }}>
+              <PipelineDAG />
               <StageDetailPanel />
             </div>
           </div>
-          <div className="p-4 overflow-y-auto border-l border-[#e5e7eb] bg-white">
+          {/* Right: agent activity sidebar */}
+          <div className="w-[220px] flex-shrink-0 overflow-y-auto border-l border-[#e5e7eb] bg-white p-4">
             <AgentActivity />
           </div>
+          {/* Execution log panel */}
           {logsVisible && <ExecutionLog />}
         </div>
       </div>

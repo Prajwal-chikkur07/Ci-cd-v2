@@ -33,7 +33,7 @@ export default function PipelineDAG() {
   if (!currentPipeline) return null;
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full absolute inset-0">
       <ReactFlow
         nodes={nodes}
         edges={edges}
