@@ -1,19 +1,18 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        sidebar: '#111827',
-        accent: '#10a37f',
-        'accent-hover': '#0d8f6f',
-        surface: '#1f2937',
-        'surface-2': '#374151',
-        border: '#374151',
-        'text-primary': '#f1f5f9',
-        'text-secondary': '#94a3b8',
-        'text-muted': '#64748b',
+        accent: '#111827',
+        'accent-hover': '#1f2937',
+        surface: '#ffffff',
+        border: '#e5e7eb',
+        muted: '#f3f4f6',
+      },
+      boxShadow: {
+        card: '0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04)',
+        'card-hover': '0 4px 12px 0 rgba(0,0,0,0.08)',
       },
     },
   },

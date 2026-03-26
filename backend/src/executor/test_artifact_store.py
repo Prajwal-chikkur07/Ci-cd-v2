@@ -170,7 +170,34 @@ class TestArtifactStoreRetrieval:
 
 class TestArtifactStoreCleanup:
     """Test artifact cleanup."""
-    
+
+    def test_cleanup_old_artifacts_none_old(self, artifact_store, test_file):
+        """Test cleanup_old_artifacts returns 0 when no artifacts are old enough."""
+        artifact_store.save_artifact("pipeline1", "stage1", test_file)
+        # max_age_hours=0 means everything is "old", but freshly created files
+        # have mtime == now, so with a very large threshold nothing is deleted
+        count = artifact_store.cleanup_old_artifacts("pipeline1", max_age_hours=9999)
+        assert count == 0
+
+    def test_cleanup_old_artifacts_removes_old(self, artifact_store, test_file):
+        """Test cleanup_old_artifacts removes artifacts older than threshold."""
+        import os, time
+        artifact_store.save_artifact("pipeline1", "stage1", test_file, artifact_name="old.txt")
+        stage_dir = artifact_store.base_path / "pipeline1" / "stage1"
+        old_artifact = stage_dir / "old.txt"
+        # Back-date the file by 2 hours
+        old_time = time.time() - 7200
+        os.utime(old_artifact, (old_time, old_time))
+
+        count = artifact_store.cleanup_old_artifacts("pipeline1", max_age_hours=1)
+        assert count == 1
+        assert not old_artifact.exists()
+
+    def test_cleanup_old_artifacts_nonexistent_pipeline(self, artifact_store):
+        """Test cleanup_old_artifacts returns 0 for nonexistent pipeline."""
+        count = artifact_store.cleanup_old_artifacts("nonexistent", max_age_hours=24)
+        assert count == 0
+
     def test_cleanup_pipeline_artifacts(self, artifact_store, test_file):
         """Test cleaning up all artifacts for a pipeline."""
         artifact_store.save_artifact(

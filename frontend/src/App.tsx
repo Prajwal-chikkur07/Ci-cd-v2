@@ -11,6 +11,7 @@ import StatusBanner from './components/StatusBanner';
 import ExecutionLog from './components/ExecutionLog';
 import ActiveExecutionTabs from './components/ActiveExecutionTabs';
 import AgentActivity from './components/AgentActivity';
+import DashboardPage from './pages/DashboardPage';
 import PipelinesPage from './pages/PipelinesPage';
 import AgentsPage from './pages/AgentsPage';
 import LogsPage from './pages/LogsPage';
@@ -25,48 +26,43 @@ function PipelineInfo() {
   const { analysis } = currentPipeline;
 
   return (
-    <div className="bg-[#111827] border-b border-[#1f2937] px-5 py-3 flex items-center gap-4 flex-shrink-0">
+    <div className="bg-white border-b border-[#e5e7eb] px-5 py-3 flex items-center gap-4 flex-shrink-0">
       <div className="flex items-center gap-4 flex-1 min-w-0">
         {currentPipeline.name && (
           <>
             <div className="min-w-0">
-              <div className="text-[10px] text-[#4b5563] mb-0.5 uppercase tracking-wide">Name</div>
-              <div className="text-sm font-semibold text-white truncate">{currentPipeline.name}</div>
+              <div className="text-[10px] text-[#9ca3af] mb-0.5 uppercase tracking-wide">Name</div>
+              <div className="text-sm font-semibold text-[#111827] truncate">{currentPipeline.name}</div>
             </div>
-            <div className="h-6 w-px bg-[#1f2937]" />
+            <div className="h-6 w-px bg-[#e5e7eb]" />
           </>
         )}
         <div className="min-w-0">
-          <div className="text-[10px] text-[#4b5563] mb-0.5 uppercase tracking-wide">Goal</div>
-          <div className="text-sm text-[#e2e8f0] truncate">{currentPipeline.goal}</div>
+          <div className="text-[10px] text-[#9ca3af] mb-0.5 uppercase tracking-wide">Goal</div>
+          <div className="text-sm text-[#374151] truncate">{currentPipeline.goal}</div>
         </div>
-        <div className="h-6 w-px bg-[#1f2937]" />
+        <div className="h-6 w-px bg-[#e5e7eb]" />
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1f2937] text-xs text-[#9ca3af] border border-[#374151]">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#f3f4f6] text-xs text-[#374151] border border-[#e5e7eb]">
             {analysis.language}
           </span>
           {analysis.framework && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-accent/10 text-xs text-accent border border-accent/20">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#f3f4f6] text-xs text-[#374151] border border-[#e5e7eb]">
               {analysis.framework}
             </span>
           )}
           {analysis.has_dockerfile && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1f2937] text-xs text-[#60a5fa] border border-[#374151]">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#eff6ff] text-xs text-[#2563eb] border border-[#bfdbfe]">
               Docker
             </span>
           )}
         </div>
-        <div className="h-6 w-px bg-[#1f2937]" />
+        <div className="h-6 w-px bg-[#e5e7eb]" />
         <div className="flex items-center gap-1.5">
           {currentPipeline.stages.map((s) => (
-            <div
-              key={s.id}
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: agentColors[s.agent].color }}
-              title={`${s.id} (${s.agent})`}
-            />
+            <div key={s.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: agentColors[s.agent].color }} title={`${s.id} (${s.agent})`} />
           ))}
-          <span className="text-xs text-[#4b5563] ml-1">{currentPipeline.stages.length} stages</span>
+          <span className="text-xs text-[#9ca3af] ml-1">{currentPipeline.stages.length} stages</span>
         </div>
       </div>
     </div>
@@ -128,8 +124,8 @@ function PipelineView() {
     if (!historyLoaded || loadingPipeline) {
       return (
         <Layout>
-          <div className="flex items-center justify-center h-full text-[#4b5563] text-sm gap-2">
-            <span className="w-4 h-4 border-2 border-[#374151] border-t-accent rounded-full animate-spin" />
+          <div className="flex items-center justify-center h-full text-[#6b7280] text-sm gap-2">
+            <span className="w-4 h-4 border-2 border-[#e5e7eb] border-t-[#111827] rounded-full animate-spin" />
             Loading pipeline...
           </div>
         </Layout>
@@ -144,10 +140,9 @@ function PipelineView() {
 
   return (
     <Layout>
-      <div className="flex flex-col h-full bg-[#0f172a]">
+      <div className="flex flex-col h-full bg-[#f9fafb]">
         <ActiveExecutionTabs />
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Center: DAG + controls */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
@@ -157,11 +152,9 @@ function PipelineView() {
               <StageDetailPanel />
             </div>
           </div>
-          {/* Right: Agent Activity */}
-          <div className="p-4 overflow-y-auto border-l border-[#1f2937] bg-[#0f172a]">
+          <div className="p-4 overflow-y-auto border-l border-[#e5e7eb] bg-white">
             <AgentActivity />
           </div>
-          {/* Far right: Execution Log */}
           {logsVisible && <ExecutionLog />}
         </div>
       </div>
@@ -182,13 +175,13 @@ function NewPipelinePage() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<NewPipelinePage />} />
+      <Route path="/" element={<Layout><DashboardPage /></Layout>} />
       <Route path="/pipeline/:pipelineId" element={<PipelineView />} />
       <Route path="/pipelines" element={<Layout><PipelinesPage /></Layout>} />
       <Route path="/agents" element={<Layout><AgentsPage /></Layout>} />
       <Route path="/logs" element={<Layout><LogsPage /></Layout>} />
       <Route path="/settings" element={<Layout><SettingsPage /></Layout>} />
-      <Route path="*" element={<NewPipelinePage />} />
+      <Route path="*" element={<Layout><DashboardPage /></Layout>} />
     </Routes>
   );
 }

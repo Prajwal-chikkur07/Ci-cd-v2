@@ -85,9 +85,6 @@ async def analyze_failure(
                 reason=reason,
                 modified_command=modified_cmd,
             )
-        elif fix_type == "use_different_port":
-            # Port conflict is handled at dispatcher level, but we can still log it
-            logger.info(f"Port conflict detected in stage {stage.id}")
     
     # Try rule-based analysis as fallback
     rule_plan = get_rule_based_plan(stage, result)

@@ -24,7 +24,7 @@ class ArtifactStore:
         stage_id: str, 
         artifact_path: str,
         artifact_name: Optional[str] = None
-    ) -> str:
+    ) -> Optional[str]:
         """
         Save artifact from stage execution.
         

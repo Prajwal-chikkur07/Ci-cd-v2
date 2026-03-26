@@ -40,13 +40,13 @@ function StdoutBlock({ stageId, lines }: { stageId: string; lines: string[] }) {
 
   return (
     <div className="ml-7 mb-1">
-      <button onClick={() => setOpen(v => !v)} className="flex items-center gap-1 text-[10px] text-[#4b5563] hover:text-[#9ca3af] mb-0.5">
+      <button onClick={() => setOpen(v => !v)} className="flex items-center gap-1 text-[10px] text-[#9ca3af] hover:text-[#6b7280] mb-0.5">
         {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         <Terminal className="w-3 h-3" />
         <span>{stageId} stdout ({lines.length} lines)</span>
       </button>
       {open && (
-        <pre ref={preRef} className="bg-[#020617] text-[#10a37f] text-[10px] font-mono p-2 rounded overflow-y-auto max-h-40 whitespace-pre-wrap border border-[#1f2937]">
+        <pre ref={preRef} className="bg-[#111827] text-[#22c55e] text-[10px] font-mono p-2 rounded overflow-y-auto max-h-40 whitespace-pre-wrap border border-[#e5e7eb]">
           {lines.join('\n')}
         </pre>
       )}
@@ -60,29 +60,27 @@ function LogLine({ entry }: { entry: LogEntry }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div
-      className="flex items-start gap-2 px-3 py-2 hover:bg-[#1f2937]/50 transition-colors group"
+    <div className="flex items-start gap-2 px-3 py-2 hover:bg-[#f9fafb] transition-colors group"
       onClick={() => entry.details && setExpanded(!expanded)}
-      style={{ cursor: entry.details ? 'pointer' : 'default' }}
-    >
+      style={{ cursor: entry.details ? 'pointer' : 'default' }}>
       <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
-        <div className="w-5 h-5 rounded-full flex items-center justify-center bg-[#1f2937]">
+        <div className="w-5 h-5 rounded-full flex items-center justify-center bg-[#f3f4f6]">
           <Icon className="w-3 h-3" style={{ color: config.color }} />
         </div>
-        <div className="w-px flex-1 bg-[#1f2937] mt-1" />
+        <div className="w-px flex-1 bg-[#f3f4f6] mt-1" />
       </div>
       <div className="flex-1 min-w-0 pb-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#1f2937]" style={{ color: config.color }}>
+          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#f3f4f6]" style={{ color: config.color }}>
             {config.label}
           </span>
-          {entry.stage_id && <span className="text-[10px] font-mono text-[#4b5563] truncate">{entry.stage_id}</span>}
-          <span className="text-[10px] text-[#374151] ml-auto flex-shrink-0">{formatTime(entry.timestamp)}</span>
-          {entry.details && (expanded ? <ChevronUp className="w-2.5 h-2.5 text-[#374151]" /> : <ChevronDown className="w-2.5 h-2.5 text-[#374151] opacity-0 group-hover:opacity-100" />)}
+          {entry.stage_id && <span className="text-[10px] font-mono text-[#9ca3af] truncate">{entry.stage_id}</span>}
+          <span className="text-[10px] text-[#d1d5db] ml-auto flex-shrink-0">{formatTime(entry.timestamp)}</span>
+          {entry.details && (expanded ? <ChevronUp className="w-2.5 h-2.5 text-[#9ca3af]" /> : <ChevronDown className="w-2.5 h-2.5 text-[#9ca3af] opacity-0 group-hover:opacity-100" />)}
         </div>
-        <p className="text-[11px] text-[#9ca3af] mt-0.5 leading-relaxed">{entry.message}</p>
+        <p className="text-[11px] text-[#6b7280] mt-0.5 leading-relaxed">{entry.message}</p>
         {expanded && entry.details && (
-          <pre className="text-[10px] font-mono bg-[#020617] text-[#9ca3af] p-2 rounded mt-1.5 overflow-x-auto whitespace-pre-wrap max-h-28 overflow-y-auto border border-[#1f2937]">
+          <pre className="text-[10px] font-mono bg-[#111827] text-[#d1d5db] p-2 rounded mt-1.5 overflow-x-auto whitespace-pre-wrap max-h-28 overflow-y-auto border border-[#e5e7eb]">
             {entry.details}
           </pre>
         )}
@@ -123,18 +121,18 @@ export default function ExecutionLog() {
   const eventCount = executionLogs.filter(l => l.type !== 'stage_output').length;
 
   return (
-    <aside className="w-[280px] bg-[#111827] border-l border-[#1f2937] flex flex-col flex-shrink-0 h-full">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1f2937] flex-shrink-0">
-        <ScrollText className="w-4 h-4 text-[#4b5563]" />
-        <h3 className="text-xs font-semibold text-[#9ca3af] uppercase tracking-wider">Execution Log</h3>
-        <span className="text-[10px] text-[#374151]">{eventCount} events</span>
-        {isExecuting && <span className="w-2 h-2 rounded-full bg-accent animate-pulse ml-auto" />}
+    <aside className="w-[280px] bg-white border-l border-[#e5e7eb] flex flex-col flex-shrink-0 h-full">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#f3f4f6] flex-shrink-0">
+        <ScrollText className="w-4 h-4 text-[#6b7280]" />
+        <h3 className="text-xs font-semibold text-[#374151] uppercase tracking-wider">Execution Log</h3>
+        <span className="text-[10px] text-[#9ca3af]">{eventCount} events</span>
+        {isExecuting && <span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse ml-auto" />}
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {rendered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[#374151] px-4">
-            <ScrollText className="w-7 h-7 mb-2" />
+          <div className="flex flex-col items-center justify-center h-full text-[#9ca3af] px-4">
+            <ScrollText className="w-7 h-7 mb-2 text-[#e5e7eb]" />
             <p className="text-xs text-center">No logs yet. Execute a pipeline to see real-time logs here.</p>
           </div>
         ) : (
@@ -148,13 +146,13 @@ export default function ExecutionLog() {
       </div>
 
       {!isExecuting && executionLogs.length > 0 && (
-        <div className="px-4 py-2 border-t border-[#1f2937] flex-shrink-0">
-          <div className="flex items-center gap-3 text-[10px] text-[#4b5563]">
-            <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-accent" />{executionLogs.filter(l => l.type === 'stage_success').length}</span>
-            <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-red-400" />{executionLogs.filter(l => l.type === 'stage_failed').length}</span>
-            <span className="flex items-center gap-1"><SkipForward className="w-3 h-3 text-amber-400" />{executionLogs.filter(l => l.type === 'stage_skipped').length}</span>
-            <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3 text-orange-400" />{executionLogs.filter(l => l.type === 'retry').length}</span>
-            <span className="flex items-center gap-1"><Wrench className="w-3 h-3 text-purple-400" />{executionLogs.filter(l => l.type === 'recovery_start').length}</span>
+        <div className="px-4 py-2 border-t border-[#f3f4f6] flex-shrink-0">
+          <div className="flex items-center gap-3 text-[10px] text-[#9ca3af]">
+            <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-[#22c55e]" />{executionLogs.filter(l => l.type === 'stage_success').length}</span>
+            <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-[#ef4444]" />{executionLogs.filter(l => l.type === 'stage_failed').length}</span>
+            <span className="flex items-center gap-1"><SkipForward className="w-3 h-3 text-[#f59e0b]" />{executionLogs.filter(l => l.type === 'stage_skipped').length}</span>
+            <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3 text-[#f59e0b]" />{executionLogs.filter(l => l.type === 'retry').length}</span>
+            <span className="flex items-center gap-1"><Wrench className="w-3 h-3 text-[#8b5cf6]" />{executionLogs.filter(l => l.type === 'recovery_start').length}</span>
           </div>
         </div>
       )}

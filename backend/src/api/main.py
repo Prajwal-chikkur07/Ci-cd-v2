@@ -81,6 +81,8 @@ async def create_pipeline(
     """Analyze a repository and generate a pipeline spec."""
     repo_url = repo_url.strip()
     goal = goal.strip()
+    if not goal:
+        raise HTTPException(status_code=422, detail="goal must not be empty")
     analysis, clone_dir = await analyze_repo(repo_url, goal=goal)
     spec = await generate_pipeline(analysis, goal, repo_url=repo_url)
     spec.name = name.strip()
@@ -124,6 +126,10 @@ async def execute_pipeline(pipeline_id: str) -> PipelineExecutionResult:
 
     try:
         result = await run_pipeline(spec, working_dir=spec.work_dir or ".", on_update=on_update)
+    except ValueError as e:
+        # DAGScheduler raises ValueError for circular dependencies or unknown stage refs
+        logger.error("Pipeline spec validation error: %s", e)
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error("Pipeline execution error: %s", e)
         raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
@@ -213,6 +219,9 @@ async def execute_failed_stages(pipeline_id: str) -> PipelineExecutionResult:
     if prev_result:
         for stage_id, stage_result in prev_result.stages.items():
             if stage_result.status.value in ("success", "skipped"):
+                executor.scheduler.mark_complete(stage_id, stage_result.status, stage_result)
+            elif stage_result.status.value == "failed":
+                # Mark as failed so reset_failed_stages() can find and reset them
                 executor.scheduler.mark_complete(stage_id, stage_result.status, stage_result)
 
     # Reset failed stages to pending

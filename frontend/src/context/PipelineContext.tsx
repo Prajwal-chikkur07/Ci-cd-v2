@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { listPipelines } from '../api/client';
-import type { PipelineSpec, StageStatus, StageResult, HistoryEntry, LogEntry, LogType } from '../types/pipeline';
+import type { PipelineSpec, StageStatus, StageResult, HistoryEntry, LogEntry } from '../types/pipeline';
 
 /** Tracks the state of a single executing pipeline (for parallel execution). */
 export interface ActiveExecution {

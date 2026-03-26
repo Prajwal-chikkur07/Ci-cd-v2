@@ -1,120 +1,95 @@
 import React from 'react';
-import { GitBranch, Plus, LayoutDashboard, GitMerge, Bot, ScrollText, Settings, Search, Bell, User } from 'lucide-react';
+import {
+  GitBranch, LayoutDashboard, GitMerge, Bot,
+  ScrollText, Settings, HelpCircle, BookOpen, User, ChevronUp,
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { usePipelineContext } from '../context/PipelineContext';
-import ExecutionHistory from './ExecutionHistory';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: GitMerge, label: 'Pipelines', path: '/pipelines' },
-  { icon: Bot, label: 'Agents', path: '/agents' },
-  { icon: ScrollText, label: 'Execution Logs', path: '/logs' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
+  { icon: LayoutDashboard, label: 'Dashboard',      path: '/' },
+  { icon: GitMerge,        label: 'Pipelines',      path: '/pipelines' },
+  { icon: Bot,             label: 'Agents',         path: '/agents' },
+  { icon: ScrollText,      label: 'Execution Logs', path: '/logs' },
+];
+
+const bottomItems = [
+  { icon: HelpCircle, label: 'Support',  path: '/support' },
+  { icon: BookOpen,   label: 'Guides',   path: '/guides' },
+  { icon: Settings,   label: 'Settings', path: '/settings' },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { clearPipeline, currentPipeline } = usePipelineContext();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleNewPipeline = () => {
-    clearPipeline();
-    navigate('/');
-  };
-
-  const isDashboard = location.pathname === '/' || location.pathname.startsWith('/pipeline/');
+  const isActive = (path: string) =>
+    path === '/' ? location.pathname === '/' || location.pathname.startsWith('/pipeline/')
+    : location.pathname === path;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0f172a]">
+    <div className="flex h-screen overflow-hidden bg-[#f9fafb]">
       {/* Sidebar */}
-      <aside className="w-[240px] bg-[#111827] flex flex-col flex-shrink-0 border-r border-[#1f2937]">
+      <aside className="w-[200px] bg-white flex flex-col flex-shrink-0 border-r border-[#e5e7eb]">
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-[#1f2937]">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-              <GitBranch className="w-4 h-4 text-white" />
+        <div className="px-5 py-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[#111827] flex items-center justify-center">
+              <GitBranch className="w-3.5 h-3.5 text-white" />
             </div>
-            <div>
-              <h1 className="text-white font-semibold text-sm leading-tight">Pipeline</h1>
-              <p className="text-[#4b5563] text-xs">Orchestrator</p>
-            </div>
+            <span className="font-semibold text-[#111827] text-sm">CI/CD</span>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-4 py-3 border-b border-[#1f2937]">
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#1f2937] rounded-lg">
-            <Search className="w-3.5 h-3.5 text-[#4b5563]" />
-            <span className="text-xs text-[#4b5563]">Search pipelines, repos...</span>
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav className="px-3 py-3 border-b border-[#1f2937]">
-          {navItems.map(({ icon: Icon, label, path }) => {
-            const active = path === '/' ? isDashboard : location.pathname === path;
-            return (
-              <button
-                key={path}
-                onClick={() => path === '/' ? handleNewPipeline() : navigate(path)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-0.5 ${
-                  active
-                    ? 'bg-accent/10 text-accent font-medium'
-                    : 'text-[#9ca3af] hover:bg-[#1f2937] hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </button>
-            );
-          })}
+        {/* Main nav */}
+        <nav className="flex-1 px-3 py-2">
+          {navItems.map(({ icon: Icon, label, path }) => (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 mb-0.5 ${
+                isActive(path)
+                  ? 'bg-[#f3f4f6] text-[#111827] font-medium'
+                  : 'text-[#6b7280] hover:bg-[#f9fafb] hover:text-[#111827]'
+              }`}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {label}
+            </button>
+          ))}
         </nav>
 
-        {/* New Pipeline button */}
-        <div className="px-4 py-3">
-          <button
-            onClick={handleNewPipeline}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New Pipeline
-          </button>
-        </div>
+        {/* Bottom nav */}
+        <div className="px-3 pb-3 border-t border-[#f3f4f6] pt-3">
+          {bottomItems.map(({ icon: Icon, label, path }) => (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 mb-0.5 ${
+                isActive(path)
+                  ? 'bg-[#f3f4f6] text-[#111827] font-medium'
+                  : 'text-[#6b7280] hover:bg-[#f9fafb] hover:text-[#111827]'
+              }`}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {label}
+            </button>
+          ))}
 
-        {/* History */}
-        <div className="flex-1 overflow-y-auto">
-          <ExecutionHistory />
+          {/* User profile */}
+          <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#f9fafb] transition-all duration-150 mt-1">
+            <div className="w-6 h-6 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+              <User className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-sm text-[#111827] font-medium flex-1 text-left truncate">User</span>
+            <ChevronUp className="w-3.5 h-3.5 text-[#9ca3af]" />
+          </button>
         </div>
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="h-14 bg-[#111827] border-b border-[#1f2937] flex items-center justify-between px-6 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            {currentPipeline?.name && (
-              <span className="text-sm font-medium text-white">{currentPipeline.name}</span>
-            )}
-            {currentPipeline?.repo_url && (
-              <span className="text-xs text-[#4b5563] truncate max-w-xs">
-                {currentPipeline.repo_url}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-[#6b7280] transition-colors">
-              <Bell className="w-4 h-4" />
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937] text-[#9ca3af] transition-colors">
-              <User className="w-4 h-4" />
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-hidden">
-          {children}
-        </main>
-      </div>
+      <main className="flex-1 overflow-hidden flex flex-col">
+        {children}
+      </main>
     </div>
   );
 }

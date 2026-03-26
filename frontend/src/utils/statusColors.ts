@@ -1,22 +1,19 @@
 import type { AgentType, StageStatus } from '../types/pipeline';
 
 export const statusConfig: Record<StageStatus, {
-  border: string;
-  bg: string;
-  text: string;
-  label: string;
+  border: string; bg: string; text: string; label: string;
 }> = {
-  pending:  { border: '#374151', bg: '#1f2937',  text: '#94a3b8', label: 'Pending' },
-  running:  { border: '#10a37f', bg: '#064e3b22', text: '#10a37f', label: 'Running' },
-  success:  { border: '#10a37f', bg: '#064e3b33', text: '#10a37f', label: 'Success' },
-  failed:   { border: '#ef4444', bg: '#7f1d1d22', text: '#ef4444', label: 'Failed' },
-  skipped:  { border: '#f59e0b', bg: '#78350f22', text: '#f59e0b', label: 'Skipped' },
+  pending:  { border: '#e5e7eb', bg: '#f9fafb', text: '#9ca3af', label: 'Pending' },
+  running:  { border: '#111827', bg: '#f9fafb', text: '#111827', label: 'Running' },
+  success:  { border: '#22c55e', bg: '#f0fdf4', text: '#16a34a', label: 'Success' },
+  failed:   { border: '#ef4444', bg: '#fef2f2', text: '#dc2626', label: 'Failed'  },
+  skipped:  { border: '#f59e0b', bg: '#fffbeb', text: '#d97706', label: 'Skipped' },
 };
 
 export const agentColors: Record<AgentType, { color: string; label: string }> = {
-  build:    { color: '#10a37f', label: 'Build Agent' },
-  test:     { color: '#60a5fa', label: 'Test Agent' },
-  security: { color: '#f87171', label: 'Security Agent' },
-  deploy:   { color: '#fb923c', label: 'Deploy Agent' },
-  verify:   { color: '#a78bfa', label: 'Verification Agent' },
+  build:    { color: '#111827', label: 'Build Agent'        },
+  test:     { color: '#3b82f6', label: 'Test Agent'         },
+  security: { color: '#ef4444', label: 'Security Agent'     },
+  deploy:   { color: '#f59e0b', label: 'Deploy Agent'       },
+  verify:   { color: '#8b5cf6', label: 'Verification Agent' },
 };

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import socket
 from datetime import datetime
 from typing import Callable, Awaitable, Optional
 
@@ -181,10 +182,10 @@ async def _execute_stage(
     if result.status == StageStatus.SUCCESS:
         combined = (result.stdout or "") + (result.stderr or "")
         hidden_patterns = [
-            "RuntimeError: Install Flask with the 'async' extra",
             "ModuleNotFoundError:",
             "ImportError:",
             "SyntaxError:",
+            "RuntimeError:",
         ]
         if any(p in combined for p in hidden_patterns):
             logger.warning("Hidden failure detected in stage %s despite exit code 0", stage_id)
@@ -307,8 +308,8 @@ class PipelineExecutor:
             health_stages = [id for id in results if "health_check" in id]
             return any(results[id].status == StageStatus.SUCCESS for id in health_stages) if health_stages else False
         elif any(kw in goal_lower for kw in ["docker", "container", "image"]):
-            docker_res = results.get("docker_build")
-            return docker_res.status == StageStatus.SUCCESS if docker_res else False
+            docker_stages = [id for id in results if "docker_build" in id]
+            return any(results[id].status == StageStatus.SUCCESS for id in docker_stages) if docker_stages else False
         return all(r.status != StageStatus.FAILED for r in results.values())
 
     def _get_final_output(self, results: dict[str, StageResult]) -> dict[str, str]:
@@ -335,7 +336,6 @@ class PipelineExecutor:
         if stage.agent == AgentType.DEPLOY:
             old_port = extract_port_from_command(command)
             # Use a real socket check instead of a hardcoded string
-            import socket
             def is_port_in_use(port: int) -> bool:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     return s.connect_ex(('localhost', port)) == 0
@@ -403,7 +403,6 @@ class PipelineExecutor:
                 if hc_url:
                     deploy_url = hc_url
                 # Parse "Success: service up on port XXXX" from health check output
-                import re
                 port_match = re.search(r"service up on port (\d+)", result.stdout or "")
                 if port_match:
                     deploy_url = f"http://localhost:{port_match.group(1)}"

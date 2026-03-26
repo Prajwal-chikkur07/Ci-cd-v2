@@ -39,7 +39,7 @@ class ConnectionManager:
         for ws in self._connections[pipeline_id]:
             try:
                 await ws.send_text(message)
-            except (WebSocketDisconnect, RuntimeError):
+            except Exception:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws, pipeline_id)

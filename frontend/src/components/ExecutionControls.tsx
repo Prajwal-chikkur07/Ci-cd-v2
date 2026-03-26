@@ -272,111 +272,81 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
   const canRerunFailed = !isExecuting && !loading && failed > 0;
 
   return (
-    <div className="bg-[#111827] border-b border-[#1f2937] px-4 py-3 flex flex-wrap items-center gap-2 flex-shrink-0">
-      {/* Execute button */}
-      <button
-        onClick={handleExecute}
-        disabled={isExecuting || loading}
-        className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover disabled:bg-[#1f2937] disabled:text-[#374151] disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-      >
-        {isExecuting || loading ? (
-          <><Loader2 className="w-4 h-4 animate-spin" />Executing...</>
-        ) : (
-          <><Play className="w-4 h-4" />Execute Pipeline</>
-        )}
+    <div className="bg-white border-b border-[#e5e7eb] px-5 py-3 flex flex-wrap items-center gap-2 flex-shrink-0">
+      <button onClick={handleExecute} disabled={isExecuting || loading}
+        className="flex items-center gap-2 px-4 py-2 bg-[#111827] hover:bg-[#1f2937] disabled:bg-[#e5e7eb] disabled:text-[#9ca3af] disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+        {isExecuting || loading ? <><Loader2 className="w-4 h-4 animate-spin" />Executing...</> : <><Play className="w-4 h-4" />Execute Pipeline</>}
       </button>
 
-      {/* Re-run Failed */}
       {canRerunFailed && (
-        <button
-          onClick={handleRerunFailed}
-          disabled={rerunLoading}
-          className="flex items-center gap-1.5 px-3 py-2 bg-orange-900/20 hover:bg-orange-900/30 disabled:opacity-50 text-orange-400 text-sm font-medium rounded-lg transition-colors border border-orange-800/30"
-        >
+        <button onClick={handleRerunFailed} disabled={rerunLoading}
+          className="flex items-center gap-1.5 px-3 py-2 bg-[#fffbeb] hover:bg-[#fef3c7] disabled:opacity-50 text-[#d97706] text-sm font-medium rounded-lg transition-colors border border-[#fde68a]">
           {rerunLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
           Re-run Failed ({failed})
         </button>
       )}
 
-      {/* Regenerate */}
-      <button
-        onClick={startRegenerate}
-        disabled={isExecuting || loading}
-        className="flex items-center gap-1.5 px-3 py-2 bg-[#1f2937] hover:bg-[#374151] disabled:opacity-50 text-[#9ca3af] text-sm font-medium rounded-lg transition-colors border border-[#374151]"
-      >
-        <RefreshCw className="w-3.5 h-3.5" />
-        Regenerate
+      <button onClick={startRegenerate} disabled={isExecuting || loading}
+        className="flex items-center gap-1.5 px-3 py-2 bg-[#f3f4f6] hover:bg-[#e5e7eb] disabled:opacity-50 text-[#374151] text-sm font-medium rounded-lg transition-colors border border-[#e5e7eb]">
+        <RefreshCw className="w-3.5 h-3.5" />Regenerate
       </button>
 
-      {/* Edit */}
-      <button
-        onClick={startEditing}
-        disabled={isExecuting || loading}
-        className="flex items-center gap-1.5 px-3 py-2 bg-[#1f2937] hover:bg-[#374151] disabled:opacity-50 text-[#9ca3af] text-sm font-medium rounded-lg transition-colors border border-[#374151]"
-      >
-        <Pencil className="w-3.5 h-3.5" />
-        Edit
+      <button onClick={startEditing} disabled={isExecuting || loading}
+        className="flex items-center gap-1.5 px-3 py-2 bg-[#f3f4f6] hover:bg-[#e5e7eb] disabled:opacity-50 text-[#374151] text-sm font-medium rounded-lg transition-colors border border-[#e5e7eb]">
+        <Pencil className="w-3.5 h-3.5" />Edit
       </button>
 
-      {/* Chain */}
       {executionHistory.length > 1 && (
-        <button
-          onClick={handleChain}
-          disabled={isExecuting || chainLoading}
-          className="flex items-center gap-1.5 px-3 py-2 bg-[#1f2937] hover:bg-[#374151] disabled:opacity-50 text-[#9ca3af] text-sm font-medium rounded-lg transition-colors border border-[#374151]"
-        >
+        <button onClick={handleChain} disabled={isExecuting || chainLoading}
+          className="flex items-center gap-1.5 px-3 py-2 bg-[#f3f4f6] hover:bg-[#e5e7eb] disabled:opacity-50 text-[#374151] text-sm font-medium rounded-lg transition-colors border border-[#e5e7eb]">
           {chainLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
           Chain All
         </button>
       )}
 
-      {/* Logs toggle */}
-      <button
-        onClick={onToggleLogs}
+      <button onClick={onToggleLogs}
         className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors border ${
-          showLogs ? 'bg-accent/10 text-accent border-accent/20' : 'bg-[#1f2937] hover:bg-[#374151] text-[#9ca3af] border-[#374151]'
-        }`}
-      >
+          showLogs ? 'bg-[#111827] text-white border-[#111827]' : 'bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#374151] border-[#e5e7eb]'
+        }`}>
         <ScrollText className="w-3.5 h-3.5" />
         Logs
         {executionLogs.length > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#374151] text-[#9ca3af]">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${showLogs ? 'bg-white/20 text-white' : 'bg-[#e5e7eb] text-[#6b7280]'}`}>
             {executionLogs.length}
           </span>
         )}
       </button>
 
-      {/* Progress */}
       <div className="flex-1 flex items-center gap-3 min-w-0">
         <div className="flex-1 max-w-xs">
-          <div className="flex justify-between text-xs text-[#4b5563] mb-1">
+          <div className="flex justify-between text-xs text-[#6b7280] mb-1">
             <span>{completed}/{total} stages complete</span>
             {isExecuting && <span className="font-mono">{elapsed.toFixed(1)}s</span>}
           </div>
-          <div className="h-1.5 bg-[#1f2937] rounded-full overflow-hidden">
-            <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 bg-[#f3f4f6] rounded-full overflow-hidden">
+            <div className="h-full bg-[#111827] rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
         </div>
 
         {deployUrl && (
           <a href={deployUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 font-medium truncate max-w-[160px]">
+            className="flex items-center gap-1 text-xs text-[#16a34a] hover:text-[#15803d] font-medium truncate max-w-[160px]">
             🚀 {deployUrl}
           </a>
         )}
 
         {allDone && (
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
-            pipelineSuccess ? 'bg-accent/10 text-accent border border-accent/20' : 'bg-red-900/20 text-red-400 border border-red-800/30'
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border ${
+            pipelineSuccess
+              ? 'bg-[#f0fdf4] text-[#16a34a] border-[#bbf7d0]'
+              : 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca]'
           }`}>
             {pipelineSuccess ? <><CheckCircle className="w-4 h-4" />Pipeline Succeeded</> : <><XCircle className="w-4 h-4" />Pipeline Failed</>}
           </div>
         )}
       </div>
 
-      {(error || chainError) && (
-        <span className="text-sm text-red-400 w-full">{error || chainError}</span>
-      )}
+      {(error || chainError) && <span className="text-sm text-[#dc2626] w-full">{error || chainError}</span>}
     </div>
   );
 }

@@ -171,7 +171,7 @@ async def save_deployment_version(version: "DeploymentVersion") -> None:
         environment=version.environment,
         status=version.status,
         health_check_passed="true" if version.health_check_passed else "false",
-        metadata=json.dumps(version.metadata),
+        deployment_metadata=json.dumps(version.metadata),
     )
     async with async_session() as session:
         session.add(row)
@@ -200,7 +200,7 @@ async def get_deployment_version(version_id: str) -> "DeploymentVersion | None":
             environment=row.environment,
             status=row.status,
             health_check_passed=row.health_check_passed == "true",
-            metadata=json.loads(row.metadata) if row.metadata else {},
+            metadata=json.loads(row.deployment_metadata) if row.deployment_metadata else {},
         )
 
 
@@ -232,7 +232,7 @@ async def get_previous_deployment_version(pipeline_id: str) -> "DeploymentVersio
             environment=row.environment,
             status=row.status,
             health_check_passed=row.health_check_passed == "true",
-            metadata=json.loads(row.metadata) if row.metadata else {},
+            metadata=json.loads(row.deployment_metadata) if row.deployment_metadata else {},
         )
 
 
@@ -260,7 +260,7 @@ async def get_deployment_history(pipeline_id: str, limit: int = 10) -> list["Dep
                 environment=row.environment,
                 status=row.status,
                 health_check_passed=row.health_check_passed == "true",
-                metadata=json.loads(row.metadata) if row.metadata else {},
+                metadata=json.loads(row.deployment_metadata) if row.deployment_metadata else {},
             )
             for row in rows
         ]

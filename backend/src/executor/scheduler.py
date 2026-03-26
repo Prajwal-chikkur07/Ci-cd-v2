@@ -17,6 +17,8 @@ class DAGScheduler:
         self._stages: dict[str, Stage] = {}
         self._statuses: dict[str, StageStatus] = {}
         self._results: dict[str, StageResult] = {}
+        # Tracks stages skipped via skip_dependents (cascade) vs explicitly skipped
+        self._cascade_skipped: set[str] = set()
 
         # Build the graph
         for stage in spec.stages:
@@ -45,7 +47,7 @@ class DAGScheduler:
         """Return stage IDs that are ready to run.
 
         A stage is ready when it is PENDING and all its predecessors
-        have completed with SUCCESS.
+        have completed with SUCCESS or SKIPPED.
         """
         ready = []
         for stage_id, status in self._statuses.items():
@@ -94,10 +96,20 @@ class DAGScheduler:
         return dict(self._results)
 
     def skip_dependents(self, stage_id: str) -> None:
-        """Skip all stages that depend on the given failed stage."""
+        """Skip all stages that depend on the given failed stage.
+
+        Stores a synthetic result so get_all_results() includes skipped stages.
+        Marks them in _cascade_skipped so reset_failed_stages can un-skip them.
+        """
         for successor in nx.descendants(self.graph, stage_id):
             if self._statuses[successor] == StageStatus.PENDING:
                 self._statuses[successor] = StageStatus.SKIPPED
+                self._results[successor] = StageResult(
+                    stage_id=successor,
+                    status=StageStatus.SKIPPED,
+                    stdout=f"Skipped due to failed dependency '{stage_id}'",
+                )
+                self._cascade_skipped.add(successor)
                 logger.info(
                     "Stage %s skipped due to failed dependency %s",
                     successor,
@@ -107,10 +119,11 @@ class DAGScheduler:
     def reset_failed_stages(self) -> list[str]:
         """Reset FAILED stages back to PENDING so they can be re-executed.
 
-        Also resets SKIPPED stages whose only failed dependency is now PENDING.
+        Also resets cascade-SKIPPED stages whose upstream failures are now reset.
         Returns the list of stage IDs that were reset.
         """
         reset = []
+
         # First pass: reset all FAILED stages to PENDING
         for stage_id, status in list(self._statuses.items()):
             if status == StageStatus.FAILED:
@@ -119,20 +132,22 @@ class DAGScheduler:
                 reset.append(stage_id)
                 logger.info("Stage %s reset to PENDING for re-execution", stage_id)
 
-        # Second pass: un-skip stages that were skipped only because of now-reset stages
+        # Second pass: un-skip cascade-skipped stages whose predecessors are now
+        # SUCCESS or PENDING. Iterate until no more changes (transitive propagation).
         changed = True
         while changed:
             changed = False
-            for stage_id, status in list(self._statuses.items()):
-                if status != StageStatus.SKIPPED:
+            for stage_id in list(self._cascade_skipped):
+                if self._statuses[stage_id] != StageStatus.SKIPPED:
                     continue
                 preds = list(self.graph.predecessors(stage_id))
                 if all(
-                    self._statuses[p] in (StageStatus.SUCCESS, StageStatus.SKIPPED, StageStatus.PENDING)
+                    self._statuses[p] in (StageStatus.SUCCESS, StageStatus.PENDING)
                     for p in preds
                 ):
                     self._statuses[stage_id] = StageStatus.PENDING
                     self._results.pop(stage_id, None)
+                    self._cascade_skipped.discard(stage_id)
                     reset.append(stage_id)
                     changed = True
                     logger.info("Stage %s un-skipped and reset to PENDING", stage_id)

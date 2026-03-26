@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AgentType(str, Enum):
@@ -18,6 +18,13 @@ class Stage(BaseModel):
     id: str
     agent: AgentType
     command: str
+
+    @field_validator("id")
+    @classmethod
+    def id_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Stage id must not be empty")
+        return v
     depends_on: list[str] = []
     timeout_seconds: int = 300
     retry_count: int = 0

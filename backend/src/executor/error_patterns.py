@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Callable
 
+from src.executor.port_utils import find_free_port, extract_port_from_command, replace_port_in_command
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +68,7 @@ ERROR_PATTERNS = [
         patterns=[
             r"npm ci.*ENOENT",
             r"npm ci.*No such file",
-            r"npm warn",
+            r"npm ERR!.*package-lock\.json",
         ],
         fix_type="npm_install_fallback",
     ),
@@ -152,10 +154,20 @@ async def apply_fix(fix_type: str, command: str, match_info: dict) -> Optional[s
         return f"chmod -R 755 . && {command}"
     
     elif fix_type == "use_different_port":
-        # This is handled at a higher level in dispatcher
-        # Just return the command as-is for now
-        logger.info("Port conflict detected - will be handled by dispatcher")
-        return None
+        # Find the port in the command and replace with a free port
+        old_port = extract_port_from_command(command)
+        if old_port:
+            try:
+                free_port = find_free_port(preferred=old_port + 1)
+                modified = replace_port_in_command(command, old_port, free_port)
+                logger.info(f"Port conflict: replacing port {old_port} with free port {free_port}")
+                return modified
+            except RuntimeError:
+                logger.warning(f"Could not find a free port near {old_port}")
+                return None
+        # No port found in command — fall back to PORT=0 env var approach
+        logger.info("Port conflict detected but no port found in command — using PORT=0")
+        return f"export PORT=0 && {command}"
     
     elif fix_type == "try_alternative_entry_point":
         # Try different entry points for Flask/Python apps
