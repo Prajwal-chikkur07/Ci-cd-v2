@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: cicd-orchestrator-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cicd-postgres
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+    healthCheckPath: /health
+
+databases:
+  - name: cicd-postgres
+    databaseName: cicd_orchestrator
+    user: postgres
+    plan: free
