@@ -103,3 +103,38 @@ class DAGScheduler:
                     successor,
                     stage_id,
                 )
+
+    def reset_failed_stages(self) -> list[str]:
+        """Reset FAILED stages back to PENDING so they can be re-executed.
+
+        Also resets SKIPPED stages whose only failed dependency is now PENDING.
+        Returns the list of stage IDs that were reset.
+        """
+        reset = []
+        # First pass: reset all FAILED stages to PENDING
+        for stage_id, status in list(self._statuses.items()):
+            if status == StageStatus.FAILED:
+                self._statuses[stage_id] = StageStatus.PENDING
+                self._results.pop(stage_id, None)
+                reset.append(stage_id)
+                logger.info("Stage %s reset to PENDING for re-execution", stage_id)
+
+        # Second pass: un-skip stages that were skipped only because of now-reset stages
+        changed = True
+        while changed:
+            changed = False
+            for stage_id, status in list(self._statuses.items()):
+                if status != StageStatus.SKIPPED:
+                    continue
+                preds = list(self.graph.predecessors(stage_id))
+                if all(
+                    self._statuses[p] in (StageStatus.SUCCESS, StageStatus.SKIPPED, StageStatus.PENDING)
+                    for p in preds
+                ):
+                    self._statuses[stage_id] = StageStatus.PENDING
+                    self._results.pop(stage_id, None)
+                    reset.append(stage_id)
+                    changed = True
+                    logger.info("Stage %s un-skipped and reset to PENDING", stage_id)
+
+        return reset

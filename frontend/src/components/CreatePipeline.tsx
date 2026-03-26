@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2, Rocket, Code2, Container, Tag, GitBranch, Search, Cpu, CheckCircle } from 'lucide-react';
 import { usePipeline } from '../hooks/usePipeline';
 import { usePipelineContext } from '../context/PipelineContext';
@@ -194,7 +195,8 @@ export default function CreatePipeline({ prefill }: CreatePipelineProps) {
   const [name, setName] = useState(prefill?.name ?? '');
   const [useDocker, setUseDocker] = useState(prefill?.useDocker ?? false);
   const { loading, error, generate, setError } = usePipeline();
-  const { setPipeline } = usePipelineContext();
+  const { setPipeline, registerExecution, switchToExecution, currentPipeline, isExecuting } = usePipelineContext();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,7 +204,15 @@ export default function CreatePipeline({ prefill }: CreatePipelineProps) {
     setError(null);
     const spec = await generate(repoUrl.trim(), goal.trim(), useDocker, name.trim());
     if (spec) {
-      setPipeline(spec);
+      // If there's a currently executing pipeline, register the new one as a parallel execution
+      if (currentPipeline && isExecuting) {
+        registerExecution(spec.pipeline_id, spec);
+        switchToExecution(spec.pipeline_id);
+      } else {
+        // Otherwise, set it as the current pipeline
+        setPipeline(spec);
+      }
+      navigate(`/pipeline/${spec.pipeline_id}`);
     }
   };
 

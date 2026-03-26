@@ -1,4 +1,5 @@
 import { CheckCircle, XCircle, Clock, Trash2, Loader2, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { deletePipeline } from '../api/client';
 import { usePipelineContext } from '../context/PipelineContext';
 import { useParallelExecution } from '../hooks/useParallelExecution';
@@ -22,9 +23,35 @@ function formatTime(iso: string): string {
   }
 }
 
+/** Inline SVG sparkline for last N run durations */
+function DurationSparkline({ durations }: { durations: number[] }) {
+  if (durations.length < 2) return null;
+  const w = 48, h = 16, pad = 1;
+  const max = Math.max(...durations, 1);
+  const pts = durations.map((d, i) => {
+    const x = pad + (i / (durations.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((d / max) * (h - pad * 2));
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg width={w} height={h} className="inline-block opacity-60">
+      <title>Last {durations.length} runs</title>
+      <polyline
+        points={pts.join(' ')}
+        fill="none"
+        stroke="#6366f1"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function ExecutionHistory() {
   const { executionHistory, loadFromHistory, removeFromHistory, activeExecutions, switchToExecution } = usePipelineContext();
   const { launchExecution } = useParallelExecution();
+  const navigate = useNavigate();
 
   const handleDelete = async (e: React.MouseEvent, entry: HistoryEntry) => {
     e.stopPropagation();
@@ -41,7 +68,22 @@ export default function ExecutionHistory() {
     launchExecution(entry.pipeline);
   };
 
+  const handleSwitchToExecution = (pid: string) => {
+    switchToExecution(pid);
+    navigate(`/pipeline/${pid}`);
+  };
+
   const activeIds = new Set(activeExecutions.keys());
+
+  // Build duration history per repo URL for sparklines (Feature 6)
+  const durationsByRepo: Record<string, number[]> = {};
+  for (const entry of [...executionHistory].reverse()) {
+    const key = entry.pipeline.repo_url;
+    if (!durationsByRepo[key]) durationsByRepo[key] = [];
+    if (entry.duration_seconds != null) {
+      durationsByRepo[key].push(entry.duration_seconds);
+    }
+  }
 
   return (
     <div className="px-4">
@@ -63,7 +105,7 @@ export default function ExecutionHistory() {
               return (
                 <button
                   key={pid}
-                  onClick={() => switchToExecution(pid)}
+                  onClick={() => handleSwitchToExecution(pid)}
                   className="w-full text-left px-3 py-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
                 >
                   <div className="flex items-center gap-2">
@@ -111,7 +153,16 @@ export default function ExecutionHistory() {
                 className="flex items-center rounded-lg hover:bg-white/10 transition-colors group"
               >
                 <button
-                  onClick={() => isRunning ? switchToExecution(entry.pipeline.pipeline_id) : loadFromHistory(entry)}
+                  onClick={() => {
+                    // If pipeline has results, it's completed — load from history
+                    // Otherwise, if it's in activeExecutions, switch to it
+                    if (entry.results || !isRunning) {
+                      loadFromHistory(entry);
+                    } else {
+                      handleSwitchToExecution(entry.pipeline.pipeline_id);
+                    }
+                    navigate(`/pipeline/${entry.pipeline.pipeline_id}`);
+                  }}
                   className="flex-1 text-left px-3 py-2.5 min-w-0"
                 >
                   <div className="flex items-center gap-2">
@@ -133,6 +184,9 @@ export default function ExecutionHistory() {
                     <span className="text-[10px] text-blue-200/40 flex-shrink-0">
                       {isRunning ? 'Running...' : formatTime(entry.completedAt)}
                     </span>
+                    {!isRunning && durationsByRepo[entry.pipeline.repo_url]?.length >= 2 && (
+                      <DurationSparkline durations={durationsByRepo[entry.pipeline.repo_url]} />
+                    )}
                   </div>
                 </button>
                 {!isRunning && (

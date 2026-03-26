@@ -1,6 +1,7 @@
 import json
 import logging
 
+import httpx
 from google import genai
 
 from src.config import settings
@@ -34,6 +35,61 @@ Start with install/setup stages, then parallel lint/test/security, then build, t
 Ensure all IDs are unique. Respond with ONLY the JSON array, no markdown formatting or explanation."""
 
 GEMINI_MODEL = "gemini-2.0-flash"
+HF_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+HF_API_URL = "https://router.huggingface.co/hf-inference/v1/chat/completions"
+
+
+async def generate_with_hf(analysis: RepoAnalysis, goal: str) -> list[Stage]:
+    """Use HuggingFace chat completions API to generate pipeline stages."""
+    if not settings.hf_api_key:
+        logger.warning("HF_API_KEY is not set — returning fallback pipeline")
+        return _fallback_stages(analysis)
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": (
+            f"Repository analysis:\n"
+            f"- Language: {analysis.language}\n"
+            f"- Framework: {analysis.framework}\n"
+            f"- Package manager: {analysis.package_manager}\n"
+            f"- Has Dockerfile: {analysis.has_dockerfile}\n"
+            f"- Has requirements.txt: {analysis.has_requirements_txt}\n"
+            f"- Has tests: {analysis.has_tests}\n"
+            f"- Test runner: {analysis.test_runner}\n"
+            f"- Is monorepo: {analysis.is_monorepo}\n"
+            f"- Deploy target: {analysis.deploy_target}\n\n"
+            f"Deployment goal: {goal}\n\n"
+            f"Generate the CI/CD pipeline stages as a JSON array."
+        )},
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                HF_API_URL,
+                headers={"Authorization": f"Bearer {settings.hf_api_key}"},
+                json={"model": HF_MODEL, "messages": messages, "max_tokens": 1024},
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        response_text = result["choices"][0]["message"]["content"].strip()
+
+        # Strip markdown code fences if present
+        if response_text.startswith("```"):
+            lines = response_text.split("\n")[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            response_text = "\n".join(lines)
+
+        raw_stages = json.loads(response_text)
+        stages = [Stage(**s) for s in raw_stages]
+        logger.info("HuggingFace generated %d pipeline stages", len(stages))
+        return stages
+
+    except Exception as e:
+        logger.warning("HuggingFace API call failed (%s), returning fallback pipeline", e)
+        return _fallback_stages(analysis)
 
 
 def _fallback_stages(analysis: RepoAnalysis) -> list[Stage]:
@@ -139,10 +195,10 @@ def _fallback_stages(analysis: RepoAnalysis) -> list[Stage]:
 
 
 async def generate_with_llm(analysis: RepoAnalysis, goal: str) -> list[Stage]:
-    """Use Gemini to generate pipeline stages for unknown project types."""
+    """Use Gemini to generate pipeline stages, falling back to HuggingFace."""
     if not settings.gemini_api_key:
-        logger.warning("GEMINI_API_KEY is not set — returning fallback pipeline")
-        return _fallback_stages(analysis)
+        logger.warning("GEMINI_API_KEY is not set — trying HuggingFace")
+        return await generate_with_hf(analysis, goal)
 
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -186,5 +242,5 @@ async def generate_with_llm(analysis: RepoAnalysis, goal: str) -> list[Stage]:
         return stages
 
     except Exception as e:
-        logger.warning("Gemini API call failed (%s), returning fallback pipeline", e)
-        return _fallback_stages(analysis)
+        logger.warning("Gemini API call failed (%s), trying HuggingFace", e)
+        return await generate_with_hf(analysis, goal)

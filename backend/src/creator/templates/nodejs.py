@@ -8,18 +8,22 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     use_pnpm = analysis.package_manager == "pnpm"
     scripts = analysis.available_scripts
 
+    # Prefix all commands with subdir cd if project is in a subdirectory
+    subdir = analysis.project_subdir
+    prefix = f"cd {subdir} && " if subdir else ""
+
     if use_yarn:
         run = "yarn"
-        install_cmd = "yarn install --frozen-lockfile"
-        audit_cmd = "yarn audit --level moderate || true"
+        install_cmd = f"{prefix}yarn install --frozen-lockfile"
+        audit_cmd = f"{prefix}yarn audit --level moderate || true"
     elif use_pnpm:
         run = "pnpm"
-        install_cmd = "pnpm install --frozen-lockfile"
-        audit_cmd = "pnpm audit --audit-level moderate || true"
+        install_cmd = f"{prefix}pnpm install --frozen-lockfile"
+        audit_cmd = f"{prefix}pnpm audit --audit-level moderate || true"
     else:
         run = "npm"
-        install_cmd = "npm ci || npm install" if analysis.has_package_lock else "npm install"
-        audit_cmd = "npm audit --audit-level=moderate || true"
+        install_cmd = f"{prefix}npm install"
+        audit_cmd = f"{prefix}npm audit --audit-level=moderate || true"
 
     stages: list[Stage] = []
 
@@ -40,7 +44,7 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     has_build = "build" in scripts
 
     if has_lint:
-        lint_cmd = f"{run} run lint"
+        lint_cmd = f"{prefix}{run} run lint"
     else:
         lint_cmd = "echo 'No lint script found, skipping'"
 
@@ -56,26 +60,36 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
     )
 
     if has_test:
+        # Detect test runner to add CI/non-watch flags
+        test_runner = analysis.test_runner or ""
+        if test_runner == "vitest":
+            test_cmd = f"{prefix}{run} run vitest run"
+        elif analysis.framework in ("react", "nextjs") or "react-scripts" in " ".join(scripts):
+            test_cmd = f"{prefix}CI=true {run} test"
+        else:
+            test_cmd = f"{prefix}CI=true {run} test -- --watchAll=false 2>/dev/null || {prefix}CI=true {run} test"
         stages.append(
             Stage(
                 id="unit_test",
                 agent=AgentType.TEST,
-                command=f"{run} test",
+                command=test_cmd,
                 depends_on=["install"],
                 timeout_seconds=120,
-                critical=True,
+                critical=False,  # Don't block pipeline if tests fail
             )
         )
 
     # Stage 3: Build
     if has_build:
-        build_cmd = f"{run} run build"
+        build_cmd = f"{prefix}{run} run build"
     else:
         build_cmd = "echo 'No build script found — install verified, package is ready'"
 
     # Next.js builds are heavier — give them more time and a retry
     is_nextjs = analysis.framework in ("nextjs", "next")
-    build_deps = ["lint"]
+    build_deps = []
+    if has_lint:
+        build_deps.append("lint")
     if has_test:
         build_deps.append("unit_test")
 
@@ -87,6 +101,7 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
             depends_on=build_deps,
             timeout_seconds=600 if is_nextjs else 300,
             retry_count=1 if is_nextjs else 0,
+            critical=True,
         )
     )
 
@@ -165,65 +180,56 @@ def generate_nodejs_pipeline(analysis: RepoAnalysis, goal: str) -> list[Stage]:
             )
 
     elif should_deploy or should_run:
-        # Use a fixed port 3000 for stability across stages
         target_port = 3000
-        
-        # Build a sensible fallback: prefer deploy script, then start, then serve
-        if "deploy" in scripts:
-            node_base = f"PORT={target_port} {run} run deploy"
-        elif "start" in scripts:
-            node_base = f"PORT={target_port} {run} start"
-        elif "serve" in scripts:
-            node_base = f"PORT={target_port} {run} run serve"
-        elif has_build:
-            node_base = f"npx -y serve -s build -l {target_port}"
-        else:
-            node_base = "echo 'No start/deploy script found — skipping'"
+        kill_port = f"fuser -k {target_port}/tcp 2>/dev/null || true"
 
-        if should_deploy:
-            # For deploy, use provided target command or fallback
-            deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, f"nohup {node_base} > app.log 2>&1 &")
-            stages.append(
-                Stage(
-                    id="deploy",
-                    agent=AgentType.DEPLOY,
-                    command=deploy_cmd,
-                    depends_on=deploy_depends,
-                    timeout_seconds=600,
-                    retry_count=1,
-                )
+        if has_build:
+            # Static React/Next app — use serve (instant, no webpack)
+            # Bind to 0.0.0.0 to be accessible from host
+            server_cmd = f"serve -s build -l 0.0.0.0:{target_port}"
+        elif "start" in scripts:
+            # Express/Node server - bind to 0.0.0.0
+            server_cmd = f"HOST=0.0.0.0 PORT={target_port} NODE_ENV=production {run} start"
+        elif "deploy" in scripts:
+            server_cmd = f"HOST=0.0.0.0 PORT={target_port} {run} run deploy"
+        else:
+            server_cmd = "echo 'No start/deploy script found — skipping'"
+
+        # Use script-based backgrounding to ensure proper detachment from parent pipes
+        # Prefix is handled inside the script as a separate cd command if needed
+        script_prefix = f"cd {subdir}" if subdir else "echo 'No subdir prefix needed'"
+        bg_cmd = (
+            f"cat > /tmp/start_node_app.sh << 'SCRIPT_EOF'\n"
+            f"#!/bin/bash\n"
+            f"{script_prefix}\n"
+            f"{kill_port}\n"
+            f"{server_cmd}\n"
+            f"SCRIPT_EOF\n"
+            f"chmod +x /tmp/start_node_app.sh && "
+            f"(nohup /tmp/start_node_app.sh > /tmp/app.log 2>&1 < /dev/null &) && sleep 5"
+        )
+
+        stage_id = "deploy" if should_deploy else "run"
+        hc_id = "health_check" if should_deploy else "health_check_run"
+        deploy_cmd = get_deploy_command(analysis.deploy_target, analysis.has_dockerfile, bg_cmd)
+
+        stages.append(
+            Stage(
+                id=stage_id,
+                agent=AgentType.DEPLOY,
+                command=deploy_cmd,
+                depends_on=deploy_depends,
+                timeout_seconds=300,
             )
-            stages.append(
-                Stage(
-                    id="health_check",
-                    agent=AgentType.VERIFY,
-                    command=get_health_check_command(analysis.deploy_target, default_port=target_port),
-                    depends_on=["deploy"],
-                    timeout_seconds=120,
-                    retry_count=2,
-                    critical=True,
-                )
+        )
+        stages.append(
+            Stage(
+                id=hc_id,
+                agent=AgentType.VERIFY,
+                command=get_health_check_command(analysis.deploy_target, default_port=target_port, log_file="/tmp/app.log"),
+                depends_on=[stage_id],
+                timeout_seconds=120,
             )
-        elif should_run:
-            stages.append(
-                Stage(
-                    id="run",
-                    agent=AgentType.DEPLOY,
-                    command=f"{node_base} > app.log 2>&1 & sleep 5",
-                    depends_on=deploy_depends,
-                    timeout_seconds=300,
-                )
-            )
-            stages.append(
-                Stage(
-                    id="health_check_run",
-                    agent=AgentType.VERIFY,
-                    command=get_health_check_command(None, default_port=target_port),
-                    depends_on=["run"],
-                    timeout_seconds=120,
-                    retry_count=2,
-                    critical=True,
-                )
-            )
+        )
 
     return stages

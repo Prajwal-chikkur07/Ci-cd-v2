@@ -43,3 +43,20 @@ class StageResultRow(Base):
     result_json = Column(Text, nullable=False)
 
     pipeline = relationship("PipelineRow", back_populates="results")
+
+
+
+class DeploymentVersionRow(Base):
+    __tablename__ = "deployment_versions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    version_id = Column(String, nullable=False)
+    pipeline_id = Column(String, ForeignKey("pipelines.pipeline_id"), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    image = Column(String, nullable=False)
+    environment = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    health_check_passed = Column(String, default="false")  # Store as string for SQLite
+    deployment_metadata = Column(Text, default="{}")  # Store as JSON string (renamed from metadata to avoid SQLAlchemy conflict)
+
+    pipeline = relationship("PipelineRow", foreign_keys=[pipeline_id])

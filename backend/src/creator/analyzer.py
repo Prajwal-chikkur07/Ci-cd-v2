@@ -1,10 +1,12 @@
 import logging
+import re
 import shutil
 import tempfile
 from typing import Optional
 
 import git
 
+from src.config import settings
 from src.creator.detector import detect_language
 from src.models.pipeline import RepoAnalysis
 
@@ -43,8 +45,21 @@ async def analyze_repo(repo_url: str, goal: str = "") -> tuple[RepoAnalysis, str
     """
     tmp_dir = tempfile.mkdtemp(prefix="cicd-analyzer-")
     try:
+        # Convert SSH URL to HTTPS
+        if repo_url.startswith("git@"):
+            repo_url = repo_url.replace(":", "/").replace("git@", "https://")
+
+        # Inject GitHub token for private repos
+        authenticated_url = repo_url
+        if settings.github_token and "github.com" in repo_url:
+            authenticated_url = re.sub(
+                r"https://github\.com",
+                f"https://{settings.github_token}@github.com",
+                repo_url,
+            )
+
         logger.info("Cloning %s into %s", repo_url, tmp_dir)
-        git.Repo.clone_from(repo_url, tmp_dir, depth=1)
+        git.Repo.clone_from(authenticated_url, tmp_dir, depth=1)
         logger.info("Clone complete, running analysis")
         analysis = detect_language(tmp_dir)
 

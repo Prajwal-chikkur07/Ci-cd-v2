@@ -1,4 +1,4 @@
-{
+  {
   "name": "cicd-orchestrator-frontend",
   "private": true,
   "version": "0.1.0",
@@ -11,6 +11,7 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.23.0",
     "reactflow": "^11.10.0",
     "dagre": "^0.8.5",
     "lucide-react": "^0.383.0"

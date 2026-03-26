@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Terminal, Info, Clock, RotateCcw, AlertTriangle, Zap, ScrollText, ExternalLink } from 'lucide-react';
 import { usePipelineContext } from '../context/PipelineContext';
 import { statusConfig, agentColors } from '../utils/statusColors';
@@ -28,6 +28,17 @@ export default function StageDetailPanel() {
   const { currentPipeline, selectedStageId, stageStatuses, stageResults, recoveryPlans, executionLogs, selectStage, deployUrl } =
     usePipelineContext();
   const [tab, setTab] = useState<'output' | 'details' | 'logs'>('output');
+  const liveOutputRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll live output to bottom as new lines arrive
+  const liveLineCount = executionLogs.filter(
+    (l) => l.stage_id === selectedStageId && l.type === 'stage_output'
+  ).length;
+  useEffect(() => {
+    if (liveOutputRef.current) {
+      liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight;
+    }
+  }, [liveLineCount]);
 
   if (!selectedStageId || !currentPipeline) return null;
 
@@ -153,7 +164,34 @@ export default function StageDetailPanel() {
           </div>
         ) : tab === 'output' ? (
           <div className="space-y-3">
-            {result?.stdout ? (
+            {/* Live streaming output while running */}
+            {status === 'running' && (() => {
+              const liveLines = executionLogs
+                .filter((l) => l.stage_id === stage.id && l.type === 'stage_output')
+                .map((l) => l.message);
+              if (liveLines.length > 0) {
+                return (
+                  <div>
+                    <label className="text-xs font-medium text-emerald-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                      Live Output
+                    </label>
+                    <pre ref={liveOutputRef} className="bg-gray-900 text-green-400 text-xs font-mono p-4 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-[400px] overflow-y-auto">
+                      {liveLines.join('\n')}
+                    </pre>
+                  </div>
+                );
+              }
+              return (
+                <div className="text-sm text-gray-400 text-center py-8 flex flex-col items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Waiting for output...
+                </div>
+              );
+            })()}
+
+            {/* Completed output */}
+            {status !== 'running' && result?.stdout ? (
               <div>
                 <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5 block">
                   stdout
@@ -162,7 +200,7 @@ export default function StageDetailPanel() {
                   {result.stdout}
                 </pre>
               </div>
-            ) : (
+            ) : status !== 'running' && (
               <div className="text-sm text-gray-400 text-center py-8">
                 {status === 'pending' ? 'Stage has not run yet' : 'No output captured'}
               </div>

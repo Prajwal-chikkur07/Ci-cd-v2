@@ -56,7 +56,7 @@ JS_FRAMEWORK_PRIORITY = [
 
 JS_TEST_RUNNERS = ["jest", "mocha", "vitest", "jasmine", "ava"]
 
-PYTHON_FRAMEWORKS = ["django", "flask", "fastapi", "streamlit", "tornado"]
+PYTHON_FRAMEWORKS = ["django", "fastapi", "starlette", "flask", "streamlit", "tornado"]
 
 JAVA_FRAMEWORKS = ["spring-boot", "quarkus", "micronaut"]
 
@@ -198,6 +198,32 @@ def _detect_python_test_extras(repo_path: Path) -> bool:
     return False
 
 
+def _detect_flask_app(repo_path: Path) -> bool:
+    """Check if repo contains actual Flask app (not just library).
+    
+    Returns True if:
+    - Has app.py, wsgi.py, application.py, or main.py at root
+    - Has create_app or create_application factory function
+    """
+    app_files = ["app.py", "wsgi.py", "application.py", "main.py"]
+    
+    # Check root level for app files
+    for f in app_files:
+        if (repo_path / f).exists():
+            return True
+    
+    # Check for factory pattern (create_app function)
+    for py_file in repo_path.glob("*.py"):
+        try:
+            content = py_file.read_text()
+            if "def create_app" in content or "def create_application" in content:
+                return True
+        except (OSError, UnicodeDecodeError):
+            pass
+    
+    return False
+
+
 def detect_language(repo_path: str) -> RepoAnalysis:
     """Analyze a repository directory and detect language, framework, etc."""
     path = Path(repo_path)
@@ -208,6 +234,7 @@ def detect_language(repo_path: str) -> RepoAnalysis:
     package_manager = "unknown"
     framework = None
     test_runner = None
+    project_subdir = None
 
     # First check root-level manifests
     for manifest in MANIFEST_PRIORITY:
@@ -225,6 +252,7 @@ def detect_language(repo_path: str) -> RepoAnalysis:
                 if (subdir / manifest).exists():
                     language = LANGUAGE_MAP[manifest]
                     package_manager = PACKAGE_MANAGER_MAP[manifest]
+                    project_subdir = subdir.name
                     logger.info("Detected %s in subdirectory %s", language, subdir.name)
                     break
             if language != "unknown":
@@ -234,34 +262,48 @@ def detect_language(repo_path: str) -> RepoAnalysis:
     has_test_extras = False
 
     if language in ("javascript", "typescript"):
-        framework, test_runner, available_scripts = _detect_js_details(path)
-        if (path / "tsconfig.json").exists():
+        js_path = path / project_subdir if project_subdir else path
+        framework, test_runner, available_scripts = _detect_js_details(js_path)
+        if (js_path / "tsconfig.json").exists():
             language = "typescript"
-        if (path / "yarn.lock").exists():
+        if (js_path / "yarn.lock").exists():
             package_manager = "yarn"
-        elif (path / "pnpm-lock.yaml").exists():
+        elif (js_path / "pnpm-lock.yaml").exists():
             package_manager = "pnpm"
     elif language == "python":
-        framework = _detect_python_framework(path)
-        test_runner = _detect_test_runner_python(path)
-        has_test_extras = _detect_python_test_extras(path)
+        py_path = path / project_subdir if project_subdir else path
+        framework = _detect_python_framework(py_path)
+        test_runner = _detect_test_runner_python(py_path)
+        has_test_extras = _detect_python_test_extras(py_path)
     elif language == "java":
-        framework = _detect_java_framework(path)
+        java_path = path / project_subdir if project_subdir else path
+        framework = _detect_java_framework(java_path)
     elif language == "ruby":
-        framework = _detect_ruby_framework(path)
+        ruby_path = path / project_subdir if project_subdir else path
+        framework = _detect_ruby_framework(ruby_path)
 
     has_dockerfile = (path / "Dockerfile").exists()
-    has_requirements_txt = (path / "requirements.txt").exists()
-    has_yarn_lock = (path / "yarn.lock").exists()
-    has_package_lock = (path / "package-lock.json").exists()
-    has_tests = _detect_tests(path)
-    is_monorepo = (path / "lerna.json").exists() or (path / "pnpm-workspace.yaml").exists()
+    
+    check_path = path / project_subdir if project_subdir else path
+    has_requirements_txt = (check_path / "requirements.txt").exists()
+    has_yarn_lock = (check_path / "yarn.lock").exists()
+    has_package_lock = (check_path / "package-lock.json").exists()
+    has_tests = _detect_tests(check_path)
+    is_monorepo = (check_path / "lerna.json").exists() or (check_path / "pnpm-workspace.yaml").exists()
 
     # Check for existing CI config
     ci_files = [".github/workflows", "Jenkinsfile", ".gitlab-ci.yml"]
     for ci in ci_files:
         if (path / ci).exists():
             logger.info("Existing CI config found: %s", ci)
+
+    # Detect if Flask repo is actually an app or just a library
+    is_flask_app = True
+    if framework == "flask":
+        flask_check_path = path / project_subdir if project_subdir else path
+        is_flask_app = _detect_flask_app(flask_check_path)
+        if not is_flask_app:
+            logger.info("Flask library detected (no app.py) — will skip deploy stages")
 
     return RepoAnalysis(
         language=language,
@@ -276,4 +318,6 @@ def detect_language(repo_path: str) -> RepoAnalysis:
         is_monorepo=is_monorepo,
         available_scripts=available_scripts,
         has_test_extras=has_test_extras,
+        project_subdir=project_subdir,
+        is_flask_app=is_flask_app,
     )

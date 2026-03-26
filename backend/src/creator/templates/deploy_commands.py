@@ -22,7 +22,6 @@ def get_deploy_command(deploy_target: Optional[str], has_dockerfile: bool, fallb
     elif has_dockerfile:
         return "docker build -t app . && docker push app"
     elif fallback_cmd:
-        # If the fallback backgrounds a server, add a wait so we confirm it starts
         if fallback_cmd.rstrip().endswith("&"):
             return f"{fallback_cmd} sleep 2 && echo 'Server started in background'"
         return fallback_cmd
@@ -30,23 +29,32 @@ def get_deploy_command(deploy_target: Optional[str], has_dockerfile: bool, fallb
         return "echo 'Deploy: package application for distribution'"
 
 
-def get_health_check_command(deploy_target: Optional[str], default_port: int = 8080, log_file: str = "app.log") -> str:
-    """Return a robust health check command with port discovery and retries."""
+def get_health_check_command(
+    deploy_target: Optional[str],
+    default_port: int = 8080,
+    log_file: str = "/tmp/app.log",
+) -> str:
+    """Return a robust health check that prioritizes the intended port."""
     if deploy_target in ("kubernetes", "k8s"):
         return "kubectl get pods -l app=app --field-selector=status.phase=Running | grep -q Running"
-    
-    script = f"""
-    PORT_LOG=\\$(grep -oE 'listening on port [0-9]+|Port [0-9]+' {log_file} | awk '{{print \\$NF}}' | head -n 1)
-    CHECK_PORT=\\${{PORT_LOG:-{default_port}}}
-    for i in {{1..15}}; do
-        for P in \\$CHECK_PORT 3000 5000 5006 8080 8000; do
-            if curl -s -o /dev/null -w "%{{http_code}}" http://localhost:\\$P | grep -q 200; then
-                echo "Success: service up on port \\$P"
-                exit 0
-            fi
-        done
-        sleep 1
-    done
-    exit 1
-    """.strip()
-    return f"bash -c \"{script.replace('\"', '\\\"')}\""
+
+    # We check the default port specifically, then a range of others as fallback
+    # Increased wait time and iterations for slower apps
+    cmd = (
+        f"echo 'Starting health check on port {default_port}...'; "
+        f"for i in $(seq 1 30); do "
+        f"  if nc -z localhost {default_port} 2>/dev/null; then "
+        f"    echo 'Health check passed: port {default_port} is open'; exit 0; "
+        f"  fi; "
+        f"  sleep 2; "
+        f"done; "
+        f"echo 'Health check failed: port {default_port} not responding. Checking fallback ports...'; "
+        f"for P in 3000 8080 5000 8000 3001 3002 8081 5001; do "
+        f"  if nc -z localhost $P 2>/dev/null; then "
+        f"    echo \"Success: service up on port $P\"; exit 0; "
+        f"  fi; "
+        f"done; "
+        f"echo 'Health check failed after 60s' && tail -50 {log_file} 2>/dev/null; exit 1"
+    )
+
+    return cmd

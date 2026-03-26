@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Callable, Awaitable, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class StageStatus(str, Enum):
@@ -13,12 +13,15 @@ class StageStatus(str, Enum):
 
 
 class StageRequest(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     stage_id: str
     command: str
     working_dir: str
     env_vars: dict[str, str] = {}
     timeout: int = 300
     artifacts_from: list[str] = []
+    on_output: Optional[Any] = None  # Callable[[str], Awaitable[None]]
 
 
 class StageResult(BaseModel):

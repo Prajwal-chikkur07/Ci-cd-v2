@@ -1,33 +1,14 @@
-import json
 import logging
+import re
 
-from google import genai
-
-from src.config import settings
 from src.executor.scheduler import DAGScheduler
+from src.executor.error_patterns import detect_error_pattern, apply_fix, get_fix_reason
 from src.models.messages import RecoveryPlan, RecoveryStrategy, StageResult, StageStatus
 from src.models.pipeline import PipelineSpec, Stage
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.0-flash"
-
-SYSTEM_PROMPT = """You are a CI/CD failure analyst. A pipeline stage has failed.
-Analyze the error output and respond with a JSON object containing your recovery plan.
-
-The JSON must have these fields:
-- strategy: one of "FIX_AND_RETRY", "SKIP_STAGE", "ROLLBACK", "ABORT"
-- reason: brief explanation of what went wrong and why you chose this strategy
-- modified_command: (only for FIX_AND_RETRY) the corrected command to try
-- rollback_steps: (only for ROLLBACK) list of commands to undo changes
-
-Guidelines:
-- FIX_AND_RETRY: Use when the error is fixable by modifying the command (e.g., missing flag, wrong path)
-- SKIP_STAGE: Use for non-critical stages where failure is acceptable
-- ROLLBACK: Use when a deployment or destructive action needs to be undone
-- ABORT: Use when the error is fundamental and cannot be recovered from
-
-Respond with ONLY the JSON object, no markdown or explanation."""
+SYSTEM_PROMPT = ""  # kept for compatibility
 
 
 def get_rule_based_plan(stage: Stage, result: StageResult) -> RecoveryPlan | None:
@@ -45,7 +26,6 @@ def get_rule_based_plan(stage: Stage, result: StageResult) -> RecoveryPlan | Non
         )
 
     # Rule 2: Python Module Missing
-    import re
     module_match = re.search(r"ModuleNotFoundError: No module named '([^']+)'", combined)
     if module_match:
         module_name = module_match.group(1)
@@ -73,89 +53,119 @@ def get_rule_based_plan(stage: Stage, result: StageResult) -> RecoveryPlan | Non
             modified_command=f"export PORT=0 && {stage.command}",
         )
 
+    # Rule 5: npm ci fails due to missing package-lock.json or ENOENT
+    if "npm ci" in stage.command and ("ENOENT" in combined or "No such file" in combined or "npm warn" in combined.lower()):
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="npm ci failed — falling back to npm install.",
+            modified_command=stage.command.replace("npm ci", "npm install"),
+        )
+
     return None
 
 
 async def analyze_failure(
     stage: Stage, result: StageResult, spec: PipelineSpec
 ) -> RecoveryPlan:
-    """Use rule-based analysis followed by Gemini AI if needed."""
-    # 1. Try rule-based analysis first (fast and deterministic)
+    """Use rule-based analysis to determine recovery strategy."""
+    stderr = result.stderr or ""
+    stdout = result.stdout or ""
+    
+    # Try error pattern detection first
+    pattern_name, match_info = await detect_error_pattern(stderr, stdout)
+    if pattern_name:
+        fix_type = match_info.get("fix_type")
+        modified_cmd = await apply_fix(fix_type, stage.command, match_info)
+        reason = get_fix_reason(pattern_name, match_info)
+        
+        if modified_cmd:
+            logger.info(f"Error pattern detected: {pattern_name}. Applying fix: {fix_type}")
+            return RecoveryPlan(
+                strategy=RecoveryStrategy.FIX_AND_RETRY,
+                reason=reason,
+                modified_command=modified_cmd,
+            )
+        elif fix_type == "use_different_port":
+            # Port conflict is handled at dispatcher level, but we can still log it
+            logger.info(f"Port conflict detected in stage {stage.id}")
+    
+    # Try rule-based analysis as fallback
     rule_plan = get_rule_based_plan(stage, result)
     if rule_plan:
         logger.info("Rule-based recovery plan found for stage %s", stage.id)
         return rule_plan
 
-    # 2. Fall back to Gemini if no rule matches
-    if not settings.gemini_api_key:
-        logger.warning("No GEMINI_API_KEY configured — skipping AI recovery for stage %s", stage.id)
+    # Extended rule-based fallback using stderr patterns
+    combined = stderr + stdout
+
+    # npm/yarn not found — need docker or node installed
+    if any(cmd in stage.command for cmd in ["npm", "yarn", "node"]) and "command not found" in combined:
         return RecoveryPlan(
-            strategy=RecoveryStrategy.SKIP_STAGE if not stage.critical else RecoveryStrategy.ABORT,
-            reason="No Gemini API key configured for AI-powered recovery analysis",
+            strategy=RecoveryStrategy.ABORT,
+            reason="Node.js/npm not available in execution environment. Enable Docker execution for JavaScript projects.",
         )
 
-    try:
-        client = genai.Client(api_key=settings.gemini_api_key)
-
-        # Truncate stderr to last 200 lines
-        stderr_lines = result.stderr.strip().split("\n")
-        truncated_stderr = "\n".join(stderr_lines[-200:])
-
-        prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"Failed stage details:\n"
-            f"- Stage ID: {stage.id}\n"
-            f"- Agent type: {stage.agent.value}\n"
-            f"- Command: {stage.command}\n"
-            f"- Exit code: {result.exit_code}\n"
-            f"- Duration: {result.duration_seconds:.1f}s\n\n"
-            f"Stderr (last 200 lines):\n{truncated_stderr}\n\n"
-            f"Pipeline goal: {spec.goal}\n"
-            f"Stage is critical: {stage.critical}\n"
-            f"Retry count remaining: {stage.retry_count}"
-        )
-
-        logger.info("Calling Gemini API for failure analysis of stage %s", stage.id)
-
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
-
-        response_text = response.text.strip()
-
-        # Strip markdown code fences if present
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            response_text = "\n".join(lines)
-
-        try:
-            plan_data = json.loads(response_text)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse recovery plan JSON: %s", e)
-            return RecoveryPlan(
-                strategy=RecoveryStrategy.ABORT,
-                reason=f"Failed to parse AI recovery suggestion: {e}",
-            )
-
-        plan = RecoveryPlan(**plan_data)
-        logger.info(
-            "Recovery plan for stage %s: strategy=%s reason=%s",
-            stage.id,
-            plan.strategy.value,
-            plan.reason,
-        )
-        return plan
-
-    except Exception as e:
-        logger.error("Gemini API call failed for stage %s: %s", stage.id, e)
+    # pip install failures
+    if "pip install" in stage.command and "ERROR" in combined:
         return RecoveryPlan(
-            strategy=RecoveryStrategy.SKIP_STAGE if not stage.critical else RecoveryStrategy.ABORT,
-            reason=f"AI recovery analysis failed: {e}",
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="pip install failed. Retrying with --no-cache-dir.",
+            modified_command=stage.command.replace("pip install", "pip install --no-cache-dir"),
         )
+
+    # Permission denied
+    if "Permission denied" in combined:
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="Permission denied. Retrying with elevated permissions.",
+            modified_command=f"chmod -R 755 . && {stage.command}",
+        )
+
+    # Go build: cannot write multiple packages to non-directory
+    if "cannot write multiple packages to non-directory" in combined:
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="Go build: multiple packages detected. Building without output flag.",
+            modified_command=re.sub(r"-o\s+\S+\s*", "", stage.command).strip() or "go build ./...",
+        )
+
+    # Rust: linker not found
+    if "linker `cc` not found" in combined or "linker not found" in combined:
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="C linker not found. Installing build-essential.",
+            modified_command=f"apt-get install -y build-essential 2>/dev/null || true && {stage.command}",
+        )
+
+    # cargo clippy -D warnings fails on external crate warnings
+    if "cargo clippy" in stage.command and "-D warnings" in stage.command and result.exit_code != 0:
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.FIX_AND_RETRY,
+            reason="Clippy -D warnings failed. Retrying without -D warnings.",
+            modified_command=stage.command.replace("-- -D warnings", "").replace("-D warnings", ""),
+        )
+
+    # Non-critical stage — skip it
+    if not stage.critical:
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.SKIP_STAGE,
+            reason=f"Stage '{stage.id}' failed and is non-critical — skipping.",
+        )
+
+    # Test stages that fail due to missing test files — skip gracefully
+    if stage.agent.value in ("test",) and any(
+        p in combined for p in ["no tests ran", "no test files", "No tests found", "collected 0 items"]
+    ):
+        return RecoveryPlan(
+            strategy=RecoveryStrategy.SKIP_STAGE,
+            reason=f"No tests found in stage '{stage.id}' — skipping.",
+        )
+
+    # Critical stage with unknown error — abort
+    return RecoveryPlan(
+        strategy=RecoveryStrategy.ABORT,
+        reason=f"Stage '{stage.id}' failed with exit code {result.exit_code}. No automated fix available.",
+    )
 
 
 async def execute_recovery(

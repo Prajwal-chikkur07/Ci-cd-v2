@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,9 +36,11 @@ class RepoAnalysis(BaseModel):
     has_tests: bool = False
     test_runner: Optional[str] = None
     is_monorepo: bool = False
-    deploy_target: Optional[str] = None  # e.g., "aws", "gcp", "azure", "docker", "heroku", "kubernetes", "staging", "production"
-    available_scripts: list[str] = []  # npm/yarn scripts found in package.json
-    has_test_extras: bool = False  # Python: has [dev], [test], or [testing] extras
+    deploy_target: Optional[str] = None
+    available_scripts: list[str] = []
+    has_test_extras: bool = False
+    project_subdir: Optional[str] = None  # subdirectory containing the project root
+    is_flask_app: bool = True  # True if Flask framework with actual app, False if library
 
 
 class PipelineSpec(BaseModel):
@@ -51,3 +53,17 @@ class PipelineSpec(BaseModel):
     stages: list[Stage]
     work_dir: str = ""
     use_docker: bool = False
+
+
+
+class DeploymentVersion(BaseModel):
+    """Track deployment versions for rollback capability."""
+    
+    version_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    pipeline_id: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    image: str  # Docker image or artifact
+    environment: str  # staging, production, dev
+    status: str  # success, failed, rolled_back
+    health_check_passed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)

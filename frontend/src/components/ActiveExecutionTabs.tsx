@@ -1,4 +1,5 @@
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { usePipelineContext } from '../context/PipelineContext';
 
 function extractRepoName(url: string): string {
@@ -12,8 +13,14 @@ function extractRepoName(url: string): string {
 
 export default function ActiveExecutionTabs() {
   const { activeExecutions, currentPipeline, switchToExecution } = usePipelineContext();
+  const navigate = useNavigate();
 
   if (activeExecutions.size <= 1) return null;
+
+  const handleSwitch = (pid: string) => {
+    switchToExecution(pid);
+    navigate(`/pipeline/${pid}`);
+  };
 
   return (
     <div className="bg-gray-900 border-b border-gray-700 px-4 py-1.5 flex items-center gap-1 flex-shrink-0 overflow-x-auto">
@@ -32,7 +39,7 @@ export default function ActiveExecutionTabs() {
         return (
           <button
             key={pid}
-            onClick={() => switchToExecution(pid)}
+            onClick={() => handleSwitch(pid)}
             className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors flex-shrink-0 ${
               isActive
                 ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'

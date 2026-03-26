@@ -25,6 +25,7 @@ interface PipelineState {
   executionLogs: LogEntry[];
   activeExecutions: Map<string, ActiveExecution>;
   deployUrl: string | null;
+  historyLoaded: boolean;
 }
 
 interface PipelineActions {
@@ -72,6 +73,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
   const [executionLogs, setExecutionLogs] = useState<LogEntry[]>([]);
   const [activeExecutions, setActiveExecutions] = useState<Map<string, ActiveExecution>>(new Map());
   const [deployUrl, setDeployUrl] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   // Load history from the backend on mount
   useEffect(() => {
@@ -79,7 +81,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
       if (entries.length > 0) {
         setExecutionHistory(entries);
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setHistoryLoaded(true));
   }, []);
 
   const setPipeline = useCallback((spec: PipelineSpec) => {
@@ -329,6 +331,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     executionLogs,
     activeExecutions,
     deployUrl,
+    historyLoaded,
     setPipeline,
     clearPipeline,
     updateStageStatus,

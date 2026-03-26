@@ -18,6 +18,7 @@ from src.executor.port_utils import (
     find_free_port,
     replace_port_in_command,
 )
+from src.executor.artifact_store import ArtifactStore
 from src.executor.replanner import analyze_failure, execute_recovery
 from src.executor.scheduler import DAGScheduler
 from src.models.messages import (
@@ -61,7 +62,7 @@ AGENT_MAP = {
 
 
 def _collect_upstream_context(
-    stage_id: str, scheduler: DAGScheduler
+    stage_id: str, scheduler: DAGScheduler, artifact_store: Optional[ArtifactStore] = None, pipeline_id: Optional[str] = None
 ) -> tuple[dict[str, str], list[str]]:
     """Collect environment variables and artifact paths from upstream stages.
 
@@ -87,9 +88,23 @@ def _collect_upstream_context(
         for key, value in result.metadata.items():
             env_from_upstream[f"{prefix}_{key.upper()}"] = str(value)
 
-        # Collect artifact paths
+        # Collect artifact paths from result
         if result.artifacts:
             artifacts_from.extend(result.artifacts)
+        
+        # Also collect artifacts from artifact store if available
+        if artifact_store and pipeline_id:
+            try:
+                # Get artifacts from artifact store (now synchronous)
+                stored_artifacts = artifact_store.get_artifacts(pipeline_id, pred_id)
+                if stored_artifacts:
+                    artifacts_from.extend(stored_artifacts)
+                    # Add artifact paths as environment variables
+                    for i, artifact in enumerate(stored_artifacts):
+                        env_var = f"ARTIFACT_{pred_id.upper().replace('-', '_')}_{i}"
+                        env_from_upstream[env_var] = artifact
+            except Exception as e:
+                logger.warning(f"Failed to get artifacts from store for {pred_id}: {e}")
 
     return env_from_upstream, artifacts_from
 
@@ -102,6 +117,9 @@ async def _execute_stage(
     use_docker: bool = False,
     language: str = "",
     command_override: str | None = None,
+    on_output: Callable[[str, str], Awaitable[None]] | None = None,
+    artifact_store: Optional[ArtifactStore] = None,
+    pipeline_id: Optional[str] = None,
 ) -> StageResult:
     """Execute a single stage using the appropriate agent."""
     stage = scheduler.get_stage(stage_id)
@@ -110,7 +128,7 @@ async def _execute_stage(
     scheduler.mark_running(stage_id)
 
     # Collect context from upstream stages for inter-stage communication
-    upstream_env, artifacts_from = _collect_upstream_context(stage_id, scheduler)
+    upstream_env, artifacts_from = _collect_upstream_context(stage_id, scheduler, artifact_store, pipeline_id)
 
     # Merge upstream env vars with stage-defined env vars (stage takes precedence)
     merged_env = {**upstream_env, **(stage.env_vars or {})}
@@ -141,6 +159,12 @@ async def _execute_stage(
             stderr=f"No agent registered for type {stage.agent}",
         )
 
+    # Build per-line streaming callback
+    line_callback = None
+    if on_output:
+        async def line_callback(line: str) -> None:
+            await on_output(stage_id, line)
+
     request = StageRequest(
         stage_id=stage_id,
         command=command,
@@ -148,6 +172,7 @@ async def _execute_stage(
         env_vars=merged_env,
         timeout=stage.timeout_seconds,
         artifacts_from=artifacts_from,
+        on_output=line_callback,
     )
 
     result = await agent.execute(request)
@@ -186,7 +211,18 @@ class PipelineExecutor:
         self.start_time: Optional[datetime] = None
         self.use_docker = spec.use_docker
         self.language = spec.analysis.language if spec.analysis else ""
+        self.artifact_store = ArtifactStore()  # Initialize artifact store
 
+
+    async def _on_stage_output(self, stage_id: str, line: str) -> None:
+        """Broadcast a single stdout line from a running stage."""
+        await self._broadcast({
+            "stage_id": stage_id,
+            "status": "running",
+            "log_type": "stage_output",
+            "log_message": line,
+            "stdout_line": line,
+        })
 
     async def _broadcast(self, data: dict) -> None:
         if self.on_update:
@@ -298,9 +334,15 @@ class PipelineExecutor:
         # Port conflict auto-recovery for deploy stages (pre-execution check)
         if stage.agent == AgentType.DEPLOY:
             old_port = extract_port_from_command(command)
-            if old_port and detect_port_conflict(f"Address already in use {old_port}"):
+            # Use a real socket check instead of a hardcoded string
+            import socket
+            def is_port_in_use(port: int) -> bool:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    return s.connect_ex(('localhost', port)) == 0
+
+            if old_port and is_port_in_use(old_port):
                 try:
-                    free_port = find_free_port(preferred=old_port)
+                    free_port = find_free_port(preferred=old_port + 1) # Start from next port
                     if free_port:
                         command = replace_port_in_command(command, old_port, free_port)
                         logger.info(
@@ -328,7 +370,11 @@ class PipelineExecutor:
         
         result = await _execute_stage(
             stage_id, self.scheduler, self.agents, 
-            self.working_dir, self.use_docker, self.language, command_override=command
+            self.working_dir, self.use_docker, self.language,
+            command_override=command,
+            on_output=self._on_stage_output,
+            artifact_store=self.artifact_store,
+            pipeline_id=self.spec.pipeline_id,
         )
         
         # Handle success
@@ -347,9 +393,24 @@ class PipelineExecutor:
                             deploy_url = extract_deploy_url("", "", succ_stage.command)
                             if deploy_url:
                                 break
-                if deploy_url:
-                    result.metadata["deploy_url"] = deploy_url
-                    logger.info("Detected deploy URL for stage %s: %s", stage_id, deploy_url)
+                # Last resort: extract port from the command itself
+                if not deploy_url:
+                    deploy_url = extract_deploy_url("", "", command)
+
+            # Also extract URL from health_check output (confirms actual running port)
+            if stage.agent == AgentType.VERIFY:
+                hc_url = extract_deploy_url(result.stdout or "", result.stderr or "", command)
+                if hc_url:
+                    deploy_url = hc_url
+                # Parse "Success: service up on port XXXX" from health check output
+                import re
+                port_match = re.search(r"service up on port (\d+)", result.stdout or "")
+                if port_match:
+                    deploy_url = f"http://localhost:{port_match.group(1)}"
+
+            if deploy_url:
+                result.metadata["deploy_url"] = deploy_url
+                logger.info("Detected deploy URL for stage %s: %s", stage_id, deploy_url)
 
             self.scheduler.mark_complete(stage_id, StageStatus.SUCCESS, result)
             broadcast_data = {

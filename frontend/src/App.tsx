@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { usePipelineContext } from './context/PipelineContext';
 import Layout from './components/Layout';
 import CreatePipeline from './components/CreatePipeline';
@@ -10,6 +11,7 @@ import StatusBanner from './components/StatusBanner';
 import ExecutionLog from './components/ExecutionLog';
 import ActiveExecutionTabs from './components/ActiveExecutionTabs';
 import { agentColors } from './utils/statusColors';
+import { getPipeline } from './api/client';
 
 function PipelineInfo() {
   const { currentPipeline } = usePipelineContext();
@@ -69,74 +71,80 @@ function PipelineInfo() {
   );
 }
 
-function AppContent() {
-  const { currentPipeline, isRegenerating, isEditing, executionLogs, isExecuting } = usePipelineContext();
+function PipelineView() {
+  const { currentPipeline, isRegenerating, isEditing, executionLogs, isExecuting, executionHistory, loadFromHistory, historyLoaded, setPipeline } = usePipelineContext();
+  const { pipelineId } = useParams<{ pipelineId: string }>();
+  const navigate = useNavigate();
   const [logsManuallyHidden, setLogsManuallyHidden] = useState(false);
+  const [loadingPipeline, setLoadingPipeline] = useState(false);
 
-  const handleToggleLogs = () => {
-    if (executionLogs.length > 0 || isExecuting) {
-      // Has logs — toggle visibility
-      setLogsManuallyHidden((prev) => !prev);
-    } else {
-      // No logs — just open empty panel
-      setLogsManuallyHidden((prev) => !prev);
+  // On refresh: wait for history to load, then restore pipeline from history or fetch directly
+  useEffect(() => {
+    if (!pipelineId || !historyLoaded) return;
+    if (currentPipeline?.pipeline_id === pipelineId) return;
+
+    const entry = executionHistory.find(e => e.pipeline.pipeline_id === pipelineId);
+    if (entry) {
+      loadFromHistory(entry);
+      return;
     }
-  };
 
-  // Reset manual hide when execution starts or pipeline changes (e.g. loading from history)
-  useEffect(() => {
-    if (isExecuting) setLogsManuallyHidden(false);
-  }, [isExecuting]);
+    // Not in history yet — fetch directly from API
+    setLoadingPipeline(true);
+    getPipeline(pipelineId).then((spec) => {
+      setPipeline(spec);
+    }).catch(() => {
+      navigate('/', { replace: true });
+    }).finally(() => setLoadingPipeline(false));
+  }, [pipelineId, historyLoaded, executionHistory]);
 
-  useEffect(() => {
-    // When pipeline changes and has logs, auto-show
-    if (executionLogs.length > 0) setLogsManuallyHidden(false);
-  }, [currentPipeline?.pipeline_id]);
+  const handleToggleLogs = () => setLogsManuallyHidden(prev => !prev);
 
-  // Show regenerate form (pre-filled with current pipeline's repo/goal/name)
+  useEffect(() => { if (isExecuting) setLogsManuallyHidden(false); }, [isExecuting]);
+  useEffect(() => { if (executionLogs.length > 0) setLogsManuallyHidden(false); }, [currentPipeline?.pipeline_id]);
+
   if (isRegenerating && currentPipeline) {
     return (
       <Layout>
         <div className="h-full overflow-y-auto">
-          <CreatePipeline
-            prefill={{
-              repoUrl: currentPipeline.repo_url,
-              goal: currentPipeline.goal,
-              name: currentPipeline.name,
-              useDocker: false,
-            }}
-          />
+          <CreatePipeline prefill={{ repoUrl: currentPipeline.repo_url, goal: currentPipeline.goal, name: currentPipeline.name, useDocker: false }} />
         </div>
       </Layout>
     );
   }
 
-  // Show edit mode
   if (isEditing && currentPipeline) {
     return (
       <Layout>
-        <div className="h-full overflow-y-auto">
-          <EditPipeline />
-        </div>
+        <div className="h-full overflow-y-auto"><EditPipeline /></div>
       </Layout>
     );
   }
 
-  // Auto-show when executing or when logs exist, unless manually hidden
+  if (!currentPipeline) {
+    // Still loading — don't redirect yet
+    if (!historyLoaded || loadingPipeline) {
+      return (
+        <Layout>
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm gap-2">
+            <span className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+            Loading pipeline...
+          </div>
+        </Layout>
+      );
+    }
+    navigate('/', { replace: true });
+    return null;
+  }
+
   const hasLogs = executionLogs.length > 0;
   const logsVisible = logsManuallyHidden ? false : (hasLogs || isExecuting);
 
   return (
     <Layout>
-      {!currentPipeline ? (
-        <div className="h-full overflow-y-auto">
-          <CreatePipeline />
-        </div>
-      ) : (
-        <div className="flex flex-col h-full">
-          <ActiveExecutionTabs />
-          <div className="flex flex-1 min-h-0">
-          {/* Main pipeline area */}
+      <div className="flex flex-col h-full">
+        <ActiveExecutionTabs />
+        <div className="flex flex-1 min-h-0">
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
@@ -144,15 +152,29 @@ function AppContent() {
             <PipelineDAG />
             <StageDetailPanel />
           </div>
-          {/* Right sidebar — Execution Log */}
           {logsVisible && <ExecutionLog />}
-          </div>
         </div>
-      )}
+      </div>
+    </Layout>
+  );
+}
+
+function NewPipelinePage() {
+  return (
+    <Layout>
+      <div className="h-full overflow-y-auto">
+        <CreatePipeline />
+      </div>
     </Layout>
   );
 }
 
 export default function App() {
-  return <AppContent />;
+  return (
+    <Routes>
+      <Route path="/" element={<NewPipelinePage />} />
+      <Route path="/pipeline/:pipelineId" element={<PipelineView />} />
+      <Route path="*" element={<NewPipelinePage />} />
+    </Routes>
+  );
 }

@@ -55,6 +55,7 @@ export interface StageUpdate {
   log_type?: LogType;
   log_message?: string;
   deploy_url?: string;
+  stdout_line?: string;
 }
 
 export type LogType =
@@ -62,6 +63,7 @@ export type LogType =
   | 'stage_success'
   | 'stage_failed'
   | 'stage_skipped'
+  | 'stage_output'
   | 'retry'
   | 'recovery_start'
   | 'recovery_plan'
@@ -85,4 +87,5 @@ export interface HistoryEntry {
   completedAt: string;
   overallStatus: 'success' | 'failed' | 'partial';
   logs?: LogEntry[];
+  duration_seconds?: number;
 }
