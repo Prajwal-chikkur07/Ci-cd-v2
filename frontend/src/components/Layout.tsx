@@ -1,79 +1,120 @@
 import React from 'react';
-import { GitBranch, Plus, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { GitBranch, Plus, LayoutDashboard, GitMerge, Bot, ScrollText, Settings, Search, Bell, User } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { usePipelineContext } from '../context/PipelineContext';
 import ExecutionHistory from './ExecutionHistory';
 
+const navItems = [
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+  { icon: GitMerge, label: 'Pipelines', path: '/pipelines' },
+  { icon: Bot, label: 'Agents', path: '/agents' },
+  { icon: ScrollText, label: 'Execution Logs', path: '/logs' },
+  { icon: Settings, label: 'Settings', path: '/settings' },
+];
+
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { currentPipeline, clearPipeline } = usePipelineContext();
+  const { clearPipeline, currentPipeline } = usePipelineContext();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleNewPipeline = () => {
     clearPipeline();
     navigate('/');
   };
 
+  const isDashboard = location.pathname === '/' || location.pathname.startsWith('/pipeline/');
+
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[#0f172a]">
       {/* Sidebar */}
-      <aside className="w-[280px] bg-sidebar flex flex-col flex-shrink-0">
-        <div className="px-5 py-6 border-b border-white/10">
+      <aside className="w-[240px] bg-[#111827] flex flex-col flex-shrink-0 border-r border-[#1f2937]">
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-[#1f2937]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent flex items-center justify-center">
-              <GitBranch className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+              <GitBranch className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-white font-semibold text-sm leading-tight">CI/CD</h1>
-              <p className="text-blue-200/60 text-xs">Orchestrator</p>
+              <h1 className="text-white font-semibold text-sm leading-tight">Pipeline</h1>
+              <p className="text-[#4b5563] text-xs">Orchestrator</p>
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-4">
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-[#1f2937]">
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#1f2937] rounded-lg">
+            <Search className="w-3.5 h-3.5 text-[#4b5563]" />
+            <span className="text-xs text-[#4b5563]">Search pipelines, repos...</span>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav className="px-3 py-3 border-b border-[#1f2937]">
+          {navItems.map(({ icon: Icon, label, path }) => {
+            const active = path === '/' ? isDashboard : location.pathname === path;
+            return (
+              <button
+                key={path}
+                onClick={() => path === '/' ? handleNewPipeline() : navigate(path)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-0.5 ${
+                  active
+                    ? 'bg-accent/10 text-accent font-medium'
+                    : 'text-[#9ca3af] hover:bg-[#1f2937] hover:text-white'
+                }`}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* New Pipeline button */}
+        <div className="px-4 py-3">
           <button
             onClick={handleNewPipeline}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent/80 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Pipeline
           </button>
         </div>
 
+        {/* History */}
         <div className="flex-1 overflow-y-auto">
           <ExecutionHistory />
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-gray-50 overflow-hidden">
-        {currentPipeline && (
-          <div className="h-12 bg-white border-b border-gray-200 flex items-center px-5 flex-shrink-0">
-            <button
-              onClick={handleNewPipeline}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              New Pipeline
-            </button>
-            <span className="mx-3 text-gray-300">|</span>
-            {currentPipeline.name && (
-              <>
-                <span className="text-sm font-medium text-gray-800 truncate">
-                  {currentPipeline.name}
-                </span>
-                <span className="mx-3 text-gray-300">|</span>
-              </>
+      {/* Main */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="h-14 bg-[#111827] border-b border-[#1f2937] flex items-center justify-between px-6 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            {currentPipeline?.name && (
+              <span className="text-sm font-medium text-white">{currentPipeline.name}</span>
             )}
-            <span className="text-sm text-gray-600 truncate">
-              {currentPipeline.repo_url}
-            </span>
+            {currentPipeline?.repo_url && (
+              <span className="text-xs text-[#4b5563] truncate max-w-xs">
+                {currentPipeline.repo_url}
+              </span>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-[#6b7280] transition-colors">
+              <Bell className="w-4 h-4" />
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937] text-[#9ca3af] transition-colors">
+              <User className="w-4 h-4" />
+            </button>
+          </div>
+        </header>
 
-        <div className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden">
           {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

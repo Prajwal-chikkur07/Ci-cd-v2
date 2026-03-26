@@ -47,13 +47,13 @@ export default function PipelineDAG() {
         zoomOnScroll
         panOnScroll
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E2E8F0" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1f2937" />
         <MiniMap
-          nodeColor="#CBD5E1"
-          maskColor="rgba(255,255,255,0.8)"
-          className="!bg-white !border !border-gray-200 !rounded-lg !shadow-sm"
+          nodeColor="#374151"
+          maskColor="rgba(15,23,42,0.8)"
+          className="!bg-[#111827] !border !border-[#1f2937] !rounded-lg"
         />
-        <Controls className="!bg-white !border !border-gray-200 !rounded-lg !shadow-sm" />
+        <Controls className="!bg-[#111827] !border !border-[#1f2937] !rounded-lg" />
       </ReactFlow>
     </div>
   );

@@ -10,6 +10,7 @@ import StageDetailPanel from './components/StageDetailPanel';
 import StatusBanner from './components/StatusBanner';
 import ExecutionLog from './components/ExecutionLog';
 import ActiveExecutionTabs from './components/ActiveExecutionTabs';
+import AgentActivity from './components/AgentActivity';
 import { agentColors } from './utils/statusColors';
 import { getPipeline } from './api/client';
 
@@ -20,41 +21,38 @@ function PipelineInfo() {
   const { analysis } = currentPipeline;
 
   return (
-    <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-6 flex-shrink-0">
+    <div className="bg-[#111827] border-b border-[#1f2937] px-5 py-3 flex items-center gap-4 flex-shrink-0">
       <div className="flex items-center gap-4 flex-1 min-w-0">
         {currentPipeline.name && (
           <>
             <div className="min-w-0">
-              <div className="text-xs text-gray-400 mb-0.5">Name</div>
-              <div className="text-sm font-semibold text-gray-900 truncate">{currentPipeline.name}</div>
+              <div className="text-[10px] text-[#4b5563] mb-0.5 uppercase tracking-wide">Name</div>
+              <div className="text-sm font-semibold text-white truncate">{currentPipeline.name}</div>
             </div>
-            <div className="h-8 w-px bg-gray-200" />
+            <div className="h-6 w-px bg-[#1f2937]" />
           </>
         )}
         <div className="min-w-0">
-          <div className="text-xs text-gray-400 mb-0.5">Goal</div>
-          <div className="text-sm font-medium text-gray-800 truncate">{currentPipeline.goal}</div>
+          <div className="text-[10px] text-[#4b5563] mb-0.5 uppercase tracking-wide">Goal</div>
+          <div className="text-sm text-[#e2e8f0] truncate">{currentPipeline.goal}</div>
         </div>
-        <div className="h-8 w-px bg-gray-200" />
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-xs font-medium text-gray-700">
+        <div className="h-6 w-px bg-[#1f2937]" />
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1f2937] text-xs text-[#9ca3af] border border-[#374151]">
             {analysis.language}
           </span>
           {analysis.framework && (
-            <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-xs font-medium text-blue-700">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-accent/10 text-xs text-accent border border-accent/20">
               {analysis.framework}
             </span>
           )}
-          <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-50 text-xs text-gray-500">
-            {analysis.package_manager}
-          </span>
           {analysis.has_dockerfile && (
-            <span className="inline-flex items-center px-2 py-1 rounded-md bg-cyan-50 text-xs text-cyan-700">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1f2937] text-xs text-[#60a5fa] border border-[#374151]">
               Docker
             </span>
           )}
         </div>
-        <div className="h-8 w-px bg-gray-200" />
+        <div className="h-6 w-px bg-[#1f2937]" />
         <div className="flex items-center gap-1.5">
           {currentPipeline.stages.map((s) => (
             <div
@@ -64,7 +62,7 @@ function PipelineInfo() {
               title={`${s.id} (${s.agent})`}
             />
           ))}
-          <span className="text-xs text-gray-400 ml-1">{currentPipeline.stages.length} stages</span>
+          <span className="text-xs text-[#4b5563] ml-1">{currentPipeline.stages.length} stages</span>
         </div>
       </div>
     </div>
@@ -126,8 +124,8 @@ function PipelineView() {
     if (!historyLoaded || loadingPipeline) {
       return (
         <Layout>
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm gap-2">
-            <span className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+          <div className="flex items-center justify-center h-full text-[#4b5563] text-sm gap-2">
+            <span className="w-4 h-4 border-2 border-[#374151] border-t-accent rounded-full animate-spin" />
             Loading pipeline...
           </div>
         </Layout>
@@ -142,16 +140,24 @@ function PipelineView() {
 
   return (
     <Layout>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full bg-[#0f172a]">
         <ActiveExecutionTabs />
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Center: DAG + controls */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
             <StatusBanner />
-            <PipelineDAG />
-            <StageDetailPanel />
+            <div className="flex-1 overflow-hidden relative">
+              <PipelineDAG />
+              <StageDetailPanel />
+            </div>
           </div>
+          {/* Right: Agent Activity */}
+          <div className="p-4 overflow-y-auto border-l border-[#1f2937] bg-[#0f172a]">
+            <AgentActivity />
+          </div>
+          {/* Far right: Execution Log */}
           {logsVisible && <ExecutionLog />}
         </div>
       </div>

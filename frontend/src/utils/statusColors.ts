@@ -6,17 +6,17 @@ export const statusConfig: Record<StageStatus, {
   text: string;
   label: string;
 }> = {
-  pending:  { border: '#D5D8DC', bg: '#FFFFFF',  text: '#5D6D7E', label: 'Pending' },
-  running:  { border: '#2E75B6', bg: '#EAF2F8',  text: '#2E75B6', label: 'Running' },
-  success:  { border: '#27AE60', bg: '#EAFAF1',  text: '#27AE60', label: 'Success' },
-  failed:   { border: '#C0392B', bg: '#FDEDEC',  text: '#C0392B', label: 'Failed' },
-  skipped:  { border: '#E67E22', bg: '#FEF5E7',  text: '#E67E22', label: 'Skipped' },
+  pending:  { border: '#374151', bg: '#1f2937',  text: '#94a3b8', label: 'Pending' },
+  running:  { border: '#10a37f', bg: '#064e3b22', text: '#10a37f', label: 'Running' },
+  success:  { border: '#10a37f', bg: '#064e3b33', text: '#10a37f', label: 'Success' },
+  failed:   { border: '#ef4444', bg: '#7f1d1d22', text: '#ef4444', label: 'Failed' },
+  skipped:  { border: '#f59e0b', bg: '#78350f22', text: '#f59e0b', label: 'Skipped' },
 };
 
 export const agentColors: Record<AgentType, { color: string; label: string }> = {
-  build:    { color: '#27AE60', label: 'Build' },
-  test:     { color: '#2E75B6', label: 'Test' },
-  security: { color: '#C0392B', label: 'Security' },
-  deploy:   { color: '#E67E22', label: 'Deploy' },
-  verify:   { color: '#8E44AD', label: 'Verify' },
+  build:    { color: '#10a37f', label: 'Build Agent' },
+  test:     { color: '#60a5fa', label: 'Test Agent' },
+  security: { color: '#f87171', label: 'Security Agent' },
+  deploy:   { color: '#fb923c', label: 'Deploy Agent' },
+  verify:   { color: '#a78bfa', label: 'Verification Agent' },
 };

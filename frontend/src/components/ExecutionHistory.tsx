@@ -86,11 +86,11 @@ export default function ExecutionHistory() {
   }
 
   return (
-    <div className="px-4">
+    <div className="px-3 py-3">
       {/* Active Executions */}
       {activeExecutions.size > 0 && (
         <>
-          <h3 className="text-xs font-semibold text-emerald-300/70 uppercase tracking-wider px-1 mb-2">
+          <h3 className="text-[10px] font-semibold text-[#10a37f] uppercase tracking-wider px-1 mb-2">
             Running ({activeExecutions.size})
           </h3>
           <div className="space-y-1 mb-4">
@@ -106,22 +106,22 @@ export default function ExecutionHistory() {
                 <button
                   key={pid}
                   onClick={() => handleSwitchToExecution(pid)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                  className="w-full text-left px-3 py-2.5 rounded-lg bg-accent/10 hover:bg-accent/20 transition-colors border border-accent/20"
                 >
                   <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 text-emerald-400 animate-spin flex-shrink-0" />
+                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin flex-shrink-0" />
                     <span className="text-sm text-white truncate font-medium">
                       {exec.pipeline.name || extractRepoName(exec.pipeline.repo_url)}
                     </span>
                   </div>
-                  <div className="ml-6 mt-1">
-                    <div className="flex justify-between text-[10px] text-emerald-300/60 mb-0.5">
+                  <div className="ml-5 mt-1.5">
+                    <div className="flex justify-between text-[10px] text-[#4b5563] mb-1">
                       <span>{completed}/{total} stages</span>
                       {failed > 0 && <span className="text-red-400">{failed} failed</span>}
                     </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-1 bg-[#1f2937] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+                        className="h-full bg-accent rounded-full transition-all duration-500"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -134,28 +134,26 @@ export default function ExecutionHistory() {
       )}
 
       {/* History */}
-      <h3 className="text-xs font-semibold text-blue-200/50 uppercase tracking-wider px-1 mb-2">
+      <h3 className="text-[10px] font-semibold text-[#4b5563] uppercase tracking-wider px-1 mb-2">
         History
       </h3>
 
       {executionHistory.length === 0 ? (
-        <div className="flex flex-col items-center py-8 text-blue-200/30">
-          <Clock className="w-8 h-8 mb-2" />
+        <div className="flex flex-col items-center py-8 text-[#374151]">
+          <Clock className="w-7 h-7 mb-2" />
           <p className="text-xs">No runs yet</p>
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {executionHistory.map((entry: HistoryEntry, i: number) => {
             const isRunning = activeIds.has(entry.pipeline.pipeline_id);
             return (
               <div
                 key={i}
-                className="flex items-center rounded-lg hover:bg-white/10 transition-colors group"
+                className="flex items-center rounded-lg hover:bg-[#1f2937] transition-colors group"
               >
                 <button
                   onClick={() => {
-                    // If pipeline has results, it's completed — load from history
-                    // Otherwise, if it's in activeExecutions, switch to it
                     if (entry.results || !isRunning) {
                       loadFromHistory(entry);
                     } else {
@@ -167,43 +165,40 @@ export default function ExecutionHistory() {
                 >
                   <div className="flex items-center gap-2">
                     {isRunning ? (
-                      <Loader2 className="w-4 h-4 text-emerald-400 animate-spin flex-shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 text-accent animate-spin flex-shrink-0" />
                     ) : entry.overallStatus === 'success' ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <CheckCircle className="w-3.5 h-3.5 text-accent flex-shrink-0" />
                     ) : (
-                      <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                      <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
                     )}
-                    <span className="text-sm text-white truncate font-medium">
+                    <span className="text-sm text-[#e2e8f0] truncate">
                       {entry.pipeline.name || extractRepoName(entry.pipeline.repo_url)}
                     </span>
                   </div>
-                  <div className="ml-6 mt-0.5 flex items-center gap-2">
-                    <span className="text-xs text-blue-200/50 truncate flex-1">
+                  <div className="ml-5 mt-0.5 flex items-center gap-2">
+                    <span className="text-xs text-[#4b5563] truncate flex-1">
                       {entry.pipeline.goal}
                     </span>
-                    <span className="text-[10px] text-blue-200/40 flex-shrink-0">
+                    <span className="text-[10px] text-[#374151] flex-shrink-0">
                       {isRunning ? 'Running...' : formatTime(entry.completedAt)}
                     </span>
-                    {!isRunning && durationsByRepo[entry.pipeline.repo_url]?.length >= 2 && (
-                      <DurationSparkline durations={durationsByRepo[entry.pipeline.repo_url]} />
-                    )}
                   </div>
                 </button>
                 {!isRunning && (
                   <div className="flex items-center mr-1 opacity-0 group-hover:opacity-100 transition-all">
                     <button
                       onClick={(e) => handleReExecute(e, entry)}
-                      className="p-2 hover:bg-emerald-500/20 rounded-md transition-all"
-                      title="Re-execute pipeline"
+                      className="p-1.5 hover:bg-accent/20 rounded-md transition-all"
+                      title="Re-execute"
                     >
-                      <Play className="w-3.5 h-3.5 text-emerald-400" />
+                      <Play className="w-3 h-3 text-accent" />
                     </button>
                     <button
                       onClick={(e) => handleDelete(e, entry)}
-                      className="p-2 hover:bg-red-500/20 rounded-md transition-all"
-                      title="Delete pipeline"
+                      className="p-1.5 hover:bg-red-500/20 rounded-md transition-all"
+                      title="Delete"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <Trash2 className="w-3 h-3 text-red-400" />
                     </button>
                   </div>
                 )}
