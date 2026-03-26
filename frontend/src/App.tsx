@@ -11,6 +11,10 @@ import StatusBanner from './components/StatusBanner';
 import ExecutionLog from './components/ExecutionLog';
 import ActiveExecutionTabs from './components/ActiveExecutionTabs';
 import AgentActivity from './components/AgentActivity';
+import PipelinesPage from './pages/PipelinesPage';
+import AgentsPage from './pages/AgentsPage';
+import LogsPage from './pages/LogsPage';
+import SettingsPage from './pages/SettingsPage';
 import { agentColors } from './utils/statusColors';
 import { getPipeline } from './api/client';
 
@@ -180,6 +184,10 @@ export default function App() {
     <Routes>
       <Route path="/" element={<NewPipelinePage />} />
       <Route path="/pipeline/:pipelineId" element={<PipelineView />} />
+      <Route path="/pipelines" element={<Layout><PipelinesPage /></Layout>} />
+      <Route path="/agents" element={<Layout><AgentsPage /></Layout>} />
+      <Route path="/logs" element={<Layout><LogsPage /></Layout>} />
+      <Route path="/settings" element={<Layout><SettingsPage /></Layout>} />
       <Route path="*" element={<NewPipelinePage />} />
     </Routes>
   );
