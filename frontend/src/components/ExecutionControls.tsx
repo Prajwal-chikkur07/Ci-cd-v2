@@ -149,6 +149,7 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
     clearLogs();
     collectedLogsRef.current = [];
     lastDeployUrlRef.current = null;
+    setDeployUrl(null);
     startExecution();
     setElapsed(0);
     setPipelineIdForWs(pid);
@@ -196,6 +197,7 @@ export default function ExecutionControls({ onToggleLogs, showLogs }: ExecutionC
     executingPipelineId.current = pid;
     wsFinalizedRef.current = false;
     lastDeployUrlRef.current = null;
+    setDeployUrl(null);
     startTimeRef.current = Date.now();
 
     clearLogs();

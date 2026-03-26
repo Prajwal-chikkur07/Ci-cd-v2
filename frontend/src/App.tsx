@@ -147,8 +147,10 @@ function PipelineView() {
             <PipelineInfo />
             <ExecutionControls onToggleLogs={handleToggleLogs} showLogs={logsVisible} />
             <StatusBanner />
-            <div className="flex-1 overflow-hidden relative">
-              <PipelineDAG />
+            <div className="flex-1 overflow-hidden relative min-h-0">
+              <div className="absolute inset-0">
+                <PipelineDAG />
+              </div>
               <StageDetailPanel />
             </div>
           </div>
