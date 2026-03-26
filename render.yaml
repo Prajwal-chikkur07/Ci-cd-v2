@@ -20,5 +20,4 @@ services:
 databases:
   - name: cicd-postgres
     databaseName: cicd_orchestrator
-    user: postgres
     plan: free
